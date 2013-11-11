@@ -1,6 +1,8 @@
 package srvproxy
 
 import (
+	"strings"
+
 	"github.com/miekg/dns"
 	"github.com/soundcloud/go-dns-resolver/resolv"
 )
@@ -25,6 +27,7 @@ func DNSResolver(name string) ([]Endpoint, error) {
 	endpoints := []Endpoint{}
 	for _, rr := range msg.Answer {
 		if srv, ok := rr.(*dns.SRV); ok {
+			srv.Target = strings.TrimSuffix(srv.Target, ".")
 			endpoints = append(endpoints, Endpoint{srv.Target, srv.Port})
 		}
 	}
