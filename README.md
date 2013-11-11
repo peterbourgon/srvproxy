@@ -1,4 +1,3 @@
-srvproxy
-========
+# srvproxy
 
-Round-robin HTTP requests to endpoints in a DNS SRV record
+Round-robin access to endpoints in a DNS SRV record.
