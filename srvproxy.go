@@ -65,6 +65,7 @@ func (p *Proxy) loop(resolve Resolver, name string, interval time.Duration) {
 			endpoints, err := resolve(name)
 			if err != nil {
 				log.Printf("srvproxy: poll: %s", err)
+				continue // don't replace good endpoints with bad
 			}
 			p.endpoints = endpoints
 
