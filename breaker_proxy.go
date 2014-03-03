@@ -25,7 +25,8 @@ func NewBreakerProxy(resolve Resolver, name string, pollInterval time.Duration) 
 		f: make(chan Endpoint),
 		q: make(chan chan struct{}),
 	}
-	go p.loop(resolve, name, updateControllers(endpoints, map[Endpoint]*controller{}, p.c), pollInterval)
+	controllers := updateControllers(endpoints, map[Endpoint]*controller{}, p.c)
+	go p.loop(resolve, name, controllers, pollInterval)
 	return p, nil
 }
 
@@ -48,7 +49,7 @@ func (p *BreakerProxy) loop(resolve Resolver, name string, controllers map[Endpo
 		case <-tick:
 			endpoints, err := resolve(name)
 			if err != nil {
-				log.Printf("srvproxy: poll: %s", err)
+				log.Printf("srvproxy: resolve: %s", err)
 				continue // don't replace good endpoints with bad
 			}
 			controllers = updateControllers(endpoints, controllers, p.c)
@@ -98,7 +99,7 @@ const (
 
 func newController(out chan Endpoint, endpoint Endpoint) *controller {
 	c := &controller{
-		out:  make(chan Endpoint),
+		out:  out,
 		fail: make(chan struct{}),
 		quit: make(chan chan struct{}),
 	}
@@ -121,7 +122,7 @@ func (c *controller) loop(endpoint Endpoint) {
 			case c.out <- endpoint:
 				// continue
 			case <-c.fail:
-				log.Printf("%v: failed, tripping circuit", endpoint)
+				log.Printf("srvproxy: %v: failed, tripping circuit", endpoint)
 				state = tripped
 			}
 
@@ -137,7 +138,7 @@ func (c *controller) loop(endpoint Endpoint) {
 			case <-c.fail:
 				// ignore
 			case <-timeout:
-				log.Printf("%v: cooldown expired, closing circuit", endpoint)
+				log.Printf("srvproxy: %v: cooldown expired, closing circuit", endpoint)
 				state = closed
 			}
 		}
@@ -161,11 +162,13 @@ func updateControllers(endpoints []Endpoint, existing map[Endpoint]*controller, 
 		if ok {
 			delete(existing, endpoint) // mv
 		} else {
+			log.Printf("srvproxy: %v: added", endpoint)
 			controller = newController(c, endpoint)
 		}
 		updated[endpoint] = controller
 	}
-	for _, controller := range existing {
+	for endpoint, controller := range existing {
+		log.Printf("srvproxy: %v: removed", endpoint)
 		controller.stop()
 	}
 	return updated
