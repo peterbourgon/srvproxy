@@ -19,9 +19,9 @@ type Proxy struct {
 	quit             chan chan struct{}
 }
 
-// New returns a new SRV Proxy, using the resolver to regularly transform the
-// name string on the poll interval.
-func New(resolve Resolver, name string, pollInterval time.Duration) (*Proxy, error) {
+// NewBasicProxy returns a new SRV Proxy, using the resolver to regularly
+// transform the name string on the poll interval.
+func NewBasicProxy(resolve Resolver, name string, pollInterval time.Duration) (*Proxy, error) {
 	endpoints, err := resolve(name)
 	if err != nil {
 		return nil, err
@@ -56,8 +56,8 @@ func (p *Proxy) Endpoint() (Endpoint, error) {
 	}
 }
 
-func (p *Proxy) loop(resolve Resolver, name string, interval time.Duration) {
-	tick := time.Tick(interval)
+func (p *Proxy) loop(resolve Resolver, name string, pollInterval time.Duration) {
+	tick := time.Tick(pollInterval)
 	index := 0
 	for {
 		select {
