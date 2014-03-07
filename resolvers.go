@@ -23,7 +23,6 @@ func DNSResolver(name string) ([]Endpoint, error) {
 	if err != nil {
 		return []Endpoint{}, err
 	}
-
 	endpoints := []Endpoint{}
 	for _, rr := range msg.Answer {
 		if srv, ok := rr.(*dns.SRV); ok {
