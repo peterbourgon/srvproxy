@@ -28,7 +28,6 @@ func (t choosingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		if t[index].Allow() {
 			return t[index].RoundTrip(req)
 		}
-		//log.Printf("choosingTransport %d/%d (%d): not allowed, skip", i+1, len(t), index)
 	}
 	return nil, ErrNoTransportAvailable
 }
@@ -65,12 +64,9 @@ func (t retryingTransport) RoundTrip(req *http.Request) (resp *http.Response, er
 	for try := 0; try < t.max && time.Now().Before(deadline); try++ {
 		resp, err = t.next.RoundTrip(req)
 		if err == nil && resp != nil && t.validate(resp) {
-			//log.Printf("- retryingTransport valid, breaking (resp=%v err=%v)", resp, err)
 			break
 		}
-		//log.Printf("- retryingTransport invalid (resp=%v err=%v)", resp, err)
 	}
-	//log.Printf("= retryingTransport returning (resp=%v err=%v)", resp, err)
 	return
 }
 

@@ -1,8 +1,10 @@
 package srvproxy
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
+	"sort"
 	"time"
 )
 
@@ -39,29 +41,35 @@ type proxy struct {
 
 // NewProxy returns a proxy satisfying both single and bulk proxy interfaces.
 // It regularly resolves the name using the resolver, on the poll interval.
-func NewProxy(name string, resolver Resolver, pollInterval time.Duration) *proxy {
+func NewProxy(name string, resolver Resolver, pollInterval time.Duration) (*proxy, error) {
+	endpoints, err := resolver(name)
+	if err != nil {
+		return nil, err
+	}
 	p := &proxy{
 		requests: make(chan []Endpoint),
-		stream:   make(chan []Endpoint),
+		stream:   make(chan []Endpoint, 1), // pre-seed with initial endpoints
 		quit:     make(chan chan struct{}),
 	}
-	go p.run(name, resolver, pollInterval)
-	return p
+	p.stream <- endpoints
+	go p.run(name, resolver, pollInterval, endpoints)
+	return p, nil
 }
 
-func (p *proxy) run(name string, resolver Resolver, pollInterval time.Duration) {
+func (p *proxy) run(name string, resolver Resolver, pollInterval time.Duration, endpoints []Endpoint) {
 	tick := time.Tick(pollInterval)
-	var endpoints []Endpoint
 	for {
 		select {
 		case <-tick:
-			ep, err := resolver(name)
+			newEndpoints, err := resolver(name)
 			if err != nil {
 				log.Printf("srvproxy: %s", err)
 				continue // don't replace potentially good endpoints with bad
 			}
-			// TODO check it's different
-			endpoints = ep
+			if same(newEndpoints, endpoints) {
+				continue // no need to update
+			}
+			endpoints = newEndpoints
 			select {
 			case p.stream <- endpoints:
 			default: // best effort
@@ -98,3 +106,23 @@ func (p *proxy) Stop() {
 	p.quit <- q
 	<-q
 }
+
+func same(a, b []Endpoint) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	sort.Sort(endpointSlice(a))
+	sort.Sort(endpointSlice(b))
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type endpointSlice []Endpoint
+
+func (a endpointSlice) Len() int           { return len(a) }
+func (a endpointSlice) Less(i, j int) bool { return fmt.Sprint(a[i]) < fmt.Sprint(a[j]) }
+func (a endpointSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }

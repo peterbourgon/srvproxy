@@ -17,16 +17,8 @@ import (
 	"time"
 
 	"github.com/streadway/handy/breaker"
+	proxypkg "github.com/streadway/handy/proxy"
 )
-
-type countingTransport int
-
-func (t *countingTransport) Allow() bool { return true }
-
-func (t *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	(*t)++
-	return &http.Response{}, nil
-}
 
 func TestChoosingTransport(t *testing.T) {
 	n := 5
@@ -50,13 +42,6 @@ func TestChoosingTransport(t *testing.T) {
 			t.Errorf("transport %d/%d had bad distribution: got %d, skew %.3f > %.3f", i+1, n, c, skew, tolerance)
 		}
 	}
-}
-
-type failingTransport int
-
-func (t *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	(*t)++
-	return nil, fmt.Errorf("fail")
 }
 
 func TestRetryingTransportMaxViaError(t *testing.T) {
@@ -118,43 +103,72 @@ func TestRetryingTransportCutoff(t *testing.T) {
 }
 
 func TestUpdatingTransport(t *testing.T) {
-	nopResolver := func(string) ([]Endpoint, error) { return []Endpoint{}, nil }
-	interval := 10 * time.Millisecond
-	proxy := NewProxy("", nopResolver, interval)
+	var foo int
+	fooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		foo++
+		w.WriteHeader(501)
+	}))
+	defer fooServer.Close()
 
-	var foo, bar countingTransport
-	calls := 0
-	flipFlopGenerator := func([]Endpoint) http.RoundTripper {
-		calls++
-		if calls%2 == 1 {
-			return &foo
+	var bar int
+	barServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bar++
+		w.WriteHeader(200)
+
+	}))
+	defer barServer.Close()
+
+	pointer := url2endpoint(t, fooServer.URL)
+	resolver := func(string) ([]Endpoint, error) { return []Endpoint{pointer}, nil }
+	interval := 10 * time.Millisecond
+	proxy, _ := NewProxy("", resolver, interval)
+
+	generator := func(endpoints []Endpoint) http.RoundTripper {
+		return proxypkg.Transport{
+			Proxy: func(req *http.Request) (*url.URL, error) {
+				if len(endpoints) != 1 {
+					t.Fatal("in generator, not precisely one endpoint")
+				}
+				proxyHost := fmt.Sprintf("%s:%d", endpoints[0].IP, endpoints[0].Port)
+				return &url.URL{
+					Scheme:   req.URL.Scheme,
+					Opaque:   req.URL.Opaque,
+					User:     req.URL.User,
+					Host:     proxyHost,
+					Path:     req.URL.Path,
+					RawQuery: req.URL.RawQuery,
+					Fragment: req.URL.Fragment,
+				}, nil
+			},
 		}
-		return &bar
 	}
 
-	transport := newUpdatingTransport(proxy, flipFlopGenerator)
+	transport := newUpdatingTransport(proxy, generator)
+
 	if int(foo) != 0 || int(bar) != 0 {
 		t.Errorf("expected foo=0, bar=0; got foo=%d bar=%d", foo, bar)
 	}
 
-	transport.RoundTrip(&http.Request{})
+	dummyRequest, _ := http.NewRequest("GET", "http://irrelevant", &bytes.Buffer{})
+	transport.RoundTrip(dummyRequest)
 	if int(foo) != 1 || int(bar) != 0 {
 		t.Errorf("expected foo=1, bar=0; got foo=%d bar=%d", foo, bar)
 	}
 
-	transport.RoundTrip(&http.Request{})
+	transport.RoundTrip(dummyRequest)
 	if int(foo) != 2 || int(bar) != 0 {
 		t.Errorf("expected foo=2, bar=0; got foo=%d bar=%d", foo, bar)
 	}
 
-	time.Sleep(interval + 1*time.Millisecond)
+	pointer = url2endpoint(t, barServer.URL)
+	time.Sleep(2 * interval) // allow time for resolver to resolve
 
-	transport.RoundTrip(&http.Request{})
+	transport.RoundTrip(dummyRequest)
 	if int(foo) != 2 || int(bar) != 1 {
 		t.Errorf("expected foo=2, bar=1; got foo=%d bar=%d", foo, bar)
 	}
 
-	transport.RoundTrip(&http.Request{})
+	transport.RoundTrip(dummyRequest)
 	if int(foo) != 2 || int(bar) != 2 {
 		t.Errorf("expected foo=2, bar=2; got foo=%d bar=%d", foo, bar)
 	}
@@ -166,19 +180,6 @@ func TestResilientTransport(t *testing.T) {
 	if ulimit < 10000 {
 		t.Logf("To run this test, set ulimit -n to at least 10000 (currently %s, %d)", out, ulimit)
 		return
-	}
-
-	url2endpoint := func(rawurl string) Endpoint {
-		u, err := url.Parse(rawurl)
-		if err != nil {
-			t.Fatal(err)
-		}
-		host, portStr := strings.Split(u.Host, ":")[0], strings.Split(u.Host, ":")[1]
-		port, err := strconv.ParseInt(portStr, 10, 32)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return Endpoint{host, uint16(port)}
 	}
 
 	var badCount int
@@ -198,8 +199,8 @@ func TestResilientTransport(t *testing.T) {
 
 	resolver := func(string) ([]Endpoint, error) {
 		return []Endpoint{
-			url2endpoint(goodServer.URL),
-			url2endpoint(badServer.URL),
+			url2endpoint(t, goodServer.URL),
+			url2endpoint(t, badServer.URL),
 		}, nil
 	}
 
@@ -208,7 +209,10 @@ func TestResilientTransport(t *testing.T) {
 	rand.Seed(seed)
 
 	run := func(maxRetries int, breakerFailureRatio float64, requestCount int) int {
-		proxy := NewProxy("", resolver, 50*time.Millisecond)
+		proxy, err := NewProxy("", resolver, 50*time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
 		validate := breaker.DefaultResponseValidator
 		transport := NewResilientTransport(
 			proxy,               // StreamingProxy
@@ -248,4 +252,33 @@ func TestResilientTransport(t *testing.T) {
 		}
 	}
 	//w.Flush()
+}
+
+type countingTransport int
+
+func (t *countingTransport) Allow() bool { return true }
+
+func (t *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	(*t)++
+	return &http.Response{}, nil
+}
+
+type failingTransport int
+
+func (t *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	(*t)++
+	return nil, fmt.Errorf("fail")
+}
+
+func url2endpoint(t *testing.T, rawurl string) Endpoint {
+	u, err := url.Parse(rawurl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portStr := strings.Split(u.Host, ":")[0], strings.Split(u.Host, ":")[1]
+	port, err := strconv.ParseInt(portStr, 10, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Endpoint{host, uint16(port)}
 }

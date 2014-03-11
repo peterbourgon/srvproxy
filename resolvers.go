@@ -1,6 +1,7 @@
 package srvproxy
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -11,6 +12,11 @@ import (
 type Endpoint struct {
 	IP   string
 	Port uint16
+}
+
+// String satisfies the Stringer interface and returns "IP:Port".
+func (e Endpoint) String() string {
+	return fmt.Sprintf("%s:%d", e.IP, e.Port)
 }
 
 // Resolver converts a symbolic/opaque name string to a set of Endpoints.
