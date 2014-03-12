@@ -32,11 +32,20 @@ func (t choosingTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return nil, ErrNoTransportAvailable
 }
 
+// allowingRoundTripper describes a RoundTripper with a bouncer. If Allow
+// returns false, any request sent to the RoundTripper will fail.
 type allowingRoundTripper interface {
 	Allow() bool
 	http.RoundTripper
 }
 
+// allowingTransport implements allowingRoundTripper with a circuit-breaking
+// transport.
+//
+//  b := breaker.NewBreaker(...)
+//  t := breaker.Transport(b, ...)
+//  a := allowingTransport{breaker: b, next: t}
+//
 type allowingTransport struct {
 	breaker breaker.Breaker
 	next    http.RoundTripper
@@ -71,7 +80,7 @@ func (t retryingTransport) RoundTrip(req *http.Request) (resp *http.Response, er
 }
 
 // updatingTransport uses a generator function to make and cache a new
-// RoundTripper whenever new Endpoints arrive from the StreamingProxy.
+// RoundTripper from Endpoints that arrive via a StreamingProxy.
 type updatingTransport struct {
 	requests chan http.RoundTripper
 }
@@ -98,18 +107,10 @@ func (t *updatingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return (<-t.requests).RoundTrip(req)
 }
 
-// makeResilientTransportGenerator returns a function that creates a retrying,
-// round-robining, circuit-breaking http.RoundTripper around the passed
-// endpoints. Each endpoint is assumed to be functionally identical. Each
-// request is assumed to be idempotent.
-//
-// Retry validator determines if a given response is valid and can be returned
-// to the client, or should be retried. Retry cutoff is a hard deadline after
-// which no more retries will be attempted, and the most recent error will be
-// returned to the client. Max retries is the maximum number of retries that
-// will be attempted within the deadline. Breaker failure ratio sets how many
-// failures per success are required to trigger the circuit breaker and open
-// the circuit.
+// makeResilientTransportGenerator returns a generator function that creates a
+// retrying, round-robining, circuit-breaking http.RoundTripper around a slice
+// of endpoints. All of the caveats described by NewResilientTransport apply
+// here.
 func makeResilientTransportGenerator(
 	retryValidator breaker.ResponseValidator,
 	retryCutoff time.Duration,
@@ -161,9 +162,9 @@ func makeResilientTransportGenerator(
 
 // NewResilientTransport creates an http.RoundTripper that acts as a resilient
 // round-robining proxy over endpoints yielded by the proxy. Resiliency is
-// achieved by combining a circuit breaker per endpoint with retry logic over
-// all endpoints. Endpoints are assumed to be functionally identical. Requests
-// are assumed to be idempotent.
+// achieved by combining a circuit breaker per endpoint with introspective
+// retry logic over all endpoints. Endpoints are assumed to be functionally
+// identical. Requests are assumed to be idempotent.
 //
 // Retry validator determines if a given non-error response is valid and can
 // be returned to the client, or should be retried. Retry cutoff is a hard
