@@ -8,12 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
-	"text/tabwriter"
 	"time"
 
 	"github.com/streadway/handy/breaker"
@@ -213,6 +211,7 @@ func TestResilientTransport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer proxy.Stop()
 		validate := breaker.DefaultResponseValidator
 		transport := NewResilientTransport(
 			proxy,               // StreamingProxy
@@ -233,25 +232,28 @@ func TestResilientTransport(t *testing.T) {
 				errCount++
 			}
 		}
-		proxy.Stop()
 		return errCount
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	w.Write([]byte("requests\tmax retries\tBFR\terrors\terror ratio\n"))
+	maxErrorRatio := 0.01
 	for _, requestCount := range []int{10000} {
 		for _, maxRetries := range []int{3} {
 			for _, breakerFailureRatio := range []float64{0.05} {
 				errorCount := run(maxRetries, breakerFailureRatio, requestCount)
 				errorRatio := float64(errorCount) / float64(requestCount)
-				w.Write([]byte(fmt.Sprintf("%d\t%d\t%f\t%d\t%f\n", requestCount, maxRetries, breakerFailureRatio, errorCount, errorRatio)))
-				if errorRatio > 0.01 {
-					t.Errorf("error ratio %f > %f", errorRatio, 0.01)
+				if errorRatio > maxErrorRatio {
+					t.Errorf(
+						"request count %d, max retries %d, BFR %f: error ratio %f > %f",
+						requestCount,
+						maxRetries,
+						breakerFailureRatio,
+						errorRatio,
+						maxErrorRatio,
+					)
 				}
 			}
 		}
 	}
-	//w.Flush()
 }
 
 type countingTransport int
@@ -276,7 +278,7 @@ func url2endpoint(t *testing.T, rawurl string) Endpoint {
 		t.Fatal(err)
 	}
 	host, portStr := strings.Split(u.Host, ":")[0], strings.Split(u.Host, ":")[1]
-	port, err := strconv.ParseInt(portStr, 10, 32)
+	port, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		t.Fatal(err)
 	}
