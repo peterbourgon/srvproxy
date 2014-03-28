@@ -44,17 +44,11 @@ type allowingRoundTripper interface {
 //
 //  b := breaker.NewBreaker(...)
 //  t := breaker.Transport(b, ...)
-//  a := allowingTransport{breaker: b, next: t}
+//  a := allowingTransport{Breaker: b, RoundTripper: t}
 //
 type allowingTransport struct {
-	breaker breaker.Breaker
-	next    http.RoundTripper
-}
-
-func (t allowingTransport) Allow() bool { return t.breaker.Allow() }
-
-func (t allowingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	return t.next.RoundTrip(req)
+	breaker.Breaker
+	http.RoundTripper
 }
 
 // retryingTransport will retry each request against the underlying
@@ -146,8 +140,8 @@ func makeResilientTransportGenerator(
 				rewritingTransport,
 			)
 			allowingTransport := allowingTransport{
-				breaker: myBreaker,
-				next:    breakingTransport,
+				Breaker:      myBreaker,
+				RoundTripper: breakingTransport,
 			}
 			choosingTransport[i] = allowingTransport
 		}
