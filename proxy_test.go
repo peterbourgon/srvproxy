@@ -12,7 +12,7 @@ import (
 	"github.com/peterbourgon/srvproxy"
 )
 
-func DontTestSingleProxy(t *testing.T) {
+func TestSingleProxy(t *testing.T) {
 	n := 5
 	servers := newTestServers(n)
 	defer servers.close()
@@ -23,7 +23,11 @@ func DontTestSingleProxy(t *testing.T) {
 	}
 	m := map[srvproxy.Endpoint]bool{}
 	for i := 0; i < 100*n; i++ {
-		m[proxy.Endpoint()] = true
+		endpoint, err := proxy.Endpoint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		m[endpoint] = true
 	}
 	if len(m) != n {
 		t.Errorf("expected to get %d unique Endpoints, but got %d", n, len(m))

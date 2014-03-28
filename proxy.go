@@ -1,6 +1,7 @@
 package srvproxy
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -15,7 +16,7 @@ type Stopper interface {
 
 // SingleProxy is anything that yields endpoints, one-by-one.
 type SingleProxy interface {
-	Endpoint() Endpoint
+	Endpoint() (Endpoint, error)
 	Stopper
 }
 
@@ -38,6 +39,10 @@ type proxy struct {
 	stream   chan []Endpoint
 	quit     chan chan struct{}
 }
+
+// ErrNoEndpointAvailable is returned by SingleProxy when the underlying
+// resource yields no endpoints.
+var ErrNoEndpointAvailable = errors.New("no endpoint available")
 
 // NewProxy returns a proxy satisfying both single and bulk proxy interfaces.
 // It regularly resolves the name using the resolver, on the poll interval.
@@ -85,9 +90,12 @@ func (p *proxy) run(name string, resolver Resolver, pollInterval time.Duration, 
 }
 
 // Endpoint implements SingleProxy.
-func (p *proxy) Endpoint() Endpoint {
+func (p *proxy) Endpoint() (Endpoint, error) {
 	endpoints := p.Endpoints()
-	return endpoints[rand.Intn(len(endpoints))]
+	if len(endpoints) <= 0 {
+		return Endpoint{}, ErrNoEndpointAvailable
+	}
+	return endpoints[rand.Intn(len(endpoints))], nil
 }
 
 // Endpoints implements BulkProxy.
