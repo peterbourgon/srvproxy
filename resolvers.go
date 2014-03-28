@@ -1,6 +1,7 @@
 package srvproxy
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -13,6 +14,11 @@ type Endpoint struct {
 	Port uint16
 }
 
+// String satisfies the Stringer interface and returns "IP:Port".
+func (e Endpoint) String() string {
+	return fmt.Sprintf("%s:%d", e.IP, e.Port)
+}
+
 // Resolver converts a symbolic/opaque name string to a set of Endpoints.
 type Resolver func(name string) ([]Endpoint, error)
 
@@ -23,7 +29,6 @@ func DNSResolver(name string) ([]Endpoint, error) {
 	if err != nil {
 		return []Endpoint{}, err
 	}
-
 	endpoints := []Endpoint{}
 	for _, rr := range msg.Answer {
 		if srv, ok := rr.(*dns.SRV); ok {
