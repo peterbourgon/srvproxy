@@ -106,6 +106,7 @@ func (t *updatingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 // of endpoints. All of the caveats described by NewResilientTransport apply
 // here.
 func makeResilientTransportGenerator(
+	readTimeout time.Duration,
 	retryValidator breaker.ResponseValidator,
 	retryCutoff time.Duration,
 	maxRetries int,
@@ -116,7 +117,8 @@ func makeResilientTransportGenerator(
 		choosingTransport := make(choosingTransport, len(endpoints))
 		for i, endpoint := range endpoints {
 			baseTransport := &http.Transport{
-				MaxIdleConnsPerHost: maxIdleConnsPerEndpoint,
+				ResponseHeaderTimeout: readTimeout,
+				MaxIdleConnsPerHost:   maxIdleConnsPerEndpoint,
 			}
 			proxyHost := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port) // capture
 			rewritingTransport := proxypkg.Transport{
@@ -149,7 +151,7 @@ func makeResilientTransportGenerator(
 			next:     choosingTransport,
 			validate: retryValidator,
 			cutoff:   retryCutoff,
-			max:      maxRetries + 1, // attempts = retries+1
+			max:      maxRetries + 1, // attempts = retries + 1
 		}
 	}
 }
@@ -169,6 +171,7 @@ func makeResilientTransportGenerator(
 // breaker and open the circuit.
 func NewResilientTransport(
 	proxy StreamingProxy,
+	readTimeout time.Duration,
 	retryValidator breaker.ResponseValidator,
 	retryCutoff time.Duration,
 	maxRetries int,
@@ -178,6 +181,7 @@ func NewResilientTransport(
 	return newUpdatingTransport(
 		proxy,
 		makeResilientTransportGenerator(
+			readTimeout,
 			retryValidator,
 			retryCutoff,
 			maxRetries,

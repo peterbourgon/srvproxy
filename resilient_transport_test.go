@@ -215,6 +215,7 @@ func TestResilientTransport(t *testing.T) {
 		validate := breaker.DefaultResponseValidator
 		transport := NewResilientTransport(
 			proxy,               // StreamingProxy
+			1*time.Second,       // readTimeout
 			validate,            // retryValidator
 			10*time.Second,      // retryCutoff
 			maxRetries,          // maxRetries

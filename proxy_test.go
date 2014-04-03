@@ -14,10 +14,10 @@ import (
 
 func TestSingleProxy(t *testing.T) {
 	n := 5
-	servers := newTestServers(n)
-	defer servers.close()
+	s := makeTestServers(n, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	defer s.close()
 	interval := 5 * time.Second // irrelevant
-	proxy, err := srvproxy.NewProxy("irrelevant", servers.resolver, interval)
+	proxy, err := srvproxy.NewProxy("irrelevant", s.resolver, interval)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,24 +34,19 @@ func TestSingleProxy(t *testing.T) {
 	}
 }
 
-type testServers struct {
-	servers []*httptest.Server
-}
+type testServers []*httptest.Server
 
-func newTestServers(n int) *testServers {
-	h := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }
-	servers := make([]*httptest.Server, n)
+func makeTestServers(n int, h http.HandlerFunc) testServers {
+	s := make([]*httptest.Server, n)
 	for i := 0; i < n; i++ {
-		servers[i] = httptest.NewServer(http.HandlerFunc(h))
+		s[i] = httptest.NewServer(h)
 	}
-	return &testServers{
-		servers: servers,
-	}
+	return testServers(s)
 }
 
-func (s *testServers) resolver(name string) ([]srvproxy.Endpoint, error) {
-	endpoints := make([]srvproxy.Endpoint, len(s.servers))
-	for i, server := range s.servers {
+func (s testServers) resolver(name string) ([]srvproxy.Endpoint, error) {
+	endpoints := make([]srvproxy.Endpoint, len(s))
+	for i, server := range s {
 		url, err := url.Parse(server.URL)
 		if err != nil {
 			return []srvproxy.Endpoint{}, err
@@ -66,8 +61,8 @@ func (s *testServers) resolver(name string) ([]srvproxy.Endpoint, error) {
 	return endpoints, nil
 }
 
-func (s *testServers) close() {
-	for _, server := range s.servers {
+func (s testServers) close() {
+	for _, server := range s {
 		server.Close()
 	}
 }
