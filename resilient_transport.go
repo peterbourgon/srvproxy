@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/streadway/handy/breaker"
@@ -13,64 +14,50 @@ import (
 )
 
 var (
-	// ErrNoTransportAvailable is returned by the choosing transport when no
-	// underlying transport will allow the request.
-	ErrNoTransportAvailable = errors.New("no allowing transport available")
+	// ErrNoTransportAvailable is returned by the choosing
+	// transport when no underlying transport will allow the request.
+	ErrNoTransportAvailable = errors.New("no successful transport available")
 )
 
-// choosingTransport sends each request to a random allowingRoundTripper whose
-// Allow method returns true. If no allowingRoundTripper will allow the
-// request, choosingTransport returns ErrNoTransportAvailable.
-type choosingTransport []allowingRoundTripper
-
-func (t choosingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	for _, index := range rand.Perm(len(t)) {
-		if t[index].Allow() {
-			return t[index].RoundTrip(req)
-		}
-	}
-	return nil, ErrNoTransportAvailable
-}
-
-// allowingRoundTripper describes a RoundTripper with a bouncer. If Allow
-// returns false, any request sent to the RoundTripper will fail.
-type allowingRoundTripper interface {
-	Allow() bool
-	http.RoundTripper
-}
-
-// allowingTransport implements allowingRoundTripper with a circuit-breaking
-// transport.
-//
-//  b := breaker.NewBreaker(...)
-//  t := breaker.Transport(b, ...)
-//  a := allowingTransport{Breaker: b, RoundTripper: t}
-//
-type allowingTransport struct {
-	breaker.Breaker
-	http.RoundTripper
-}
-
-// retryingTransport will retry each request against the underlying
-// RoundTripper until the returned error is nil and the returned response
-// passes the validator, or the max number of attempts is reached, or the
-// cutoff deadline is passed, whichever occurs first.
-type retryingTransport struct {
-	next     http.RoundTripper
+// retryTransport forwards the request to each next RoundTripper in random
+// sequence. It will return the first validated response it receives. It will
+// abort when it exceeds the max attempt count, or the cutoff deadline, or it
+// exhausts the next RoundTrippers, whichever occurs first.
+type retryTransport struct {
+	next     []http.RoundTripper
 	validate breaker.ResponseValidator
 	cutoff   time.Duration
 	max      int
 }
 
-func (t retryingTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (t retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	deadline := time.Now().Add(t.cutoff)
-	for try := 0; try < t.max && time.Now().Before(deadline); try++ {
-		resp, err = t.next.RoundTrip(req)
-		if err == nil && resp != nil && t.validate(resp) {
+	errs := []string{}
+	for attempt, index := range rand.Perm(len(t.next)) {
+		if attempt >= t.max {
+			errs = append(errs, "too many attempts")
 			break
 		}
+		if time.Now().After(deadline) {
+			errs = append(errs, "deadline exceeded")
+			break
+		}
+		resp, err := t.next[index].RoundTrip(req)
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		if resp == nil {
+			errs = append(errs, "nil response")
+			continue
+		}
+		if !t.validate(resp) {
+			errs = append(errs, "response failed validation")
+			continue
+		}
+		return resp, err
 	}
-	return
+	return nil, fmt.Errorf("request failed (%s)", strings.Join(errs, "; "))
 }
 
 // updatingTransport uses a generator function to make and cache a new
@@ -114,7 +101,7 @@ func makeResilientTransportGenerator(
 	maxIdleConnsPerEndpoint int,
 ) func([]Endpoint) http.RoundTripper {
 	return func(endpoints []Endpoint) http.RoundTripper {
-		choosingTransport := make(choosingTransport, len(endpoints))
+		candidates := make([]http.RoundTripper, len(endpoints))
 		for i, endpoint := range endpoints {
 			baseTransport := &http.Transport{
 				ResponseHeaderTimeout: readTimeout,
@@ -135,20 +122,14 @@ func makeResilientTransportGenerator(
 				},
 				Next: baseTransport,
 			}
-			myBreaker := breaker.NewBreaker(breakerFailureRatio)
-			breakingTransport := breaker.Transport(
-				myBreaker,
+			candidates[i] = breaker.Transport(
+				breaker.NewBreaker(breakerFailureRatio),
 				breaker.DefaultResponseValidator,
 				rewritingTransport,
 			)
-			allowingTransport := allowingTransport{
-				Breaker:      myBreaker,
-				RoundTripper: breakingTransport,
-			}
-			choosingTransport[i] = allowingTransport
 		}
-		return retryingTransport{
-			next:     choosingTransport,
+		return retryTransport{
+			next:     candidates,
 			validate: retryValidator,
 			cutoff:   retryCutoff,
 			max:      maxRetries + 1, // attempts = retries + 1

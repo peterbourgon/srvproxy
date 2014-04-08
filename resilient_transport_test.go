@@ -18,67 +18,47 @@ import (
 	proxypkg "github.com/streadway/handy/proxy"
 )
 
-func TestChoosingTransport(t *testing.T) {
-	n := 5
-
-	a := make([]countingTransport, n)
-	r := make(choosingTransport, n)
-	for i := 0; i < n; i++ {
-		r[i] = &a[i]
-	}
-
-	x := 10000
-	for i := 0; i < x; i++ {
-		r.RoundTrip(&http.Request{})
-	}
-
-	tolerance := 0.01
-	for i, c := range a {
-		expected := float64(x) / float64(n)
-		got := float64(c)
-		if skew := math.Abs(expected-got) / float64(x); skew > tolerance {
-			t.Errorf("transport %d/%d had bad distribution: got %d, skew %.3f > %.3f", i+1, n, c, skew, tolerance)
-		}
-	}
-}
-
-func TestRetryingTransportMaxViaError(t *testing.T) {
+func TestRetryTransportErrorFail(t *testing.T) {
 	var f failingTransport
-	r := retryingTransport{
-		next:     &f,
+	r := retryTransport{
+		next:     []http.RoundTripper{&f},
 		validate: func(*http.Response) bool { return true },
 		cutoff:   5 * time.Second, // very high
 		max:      3,
 	}
 	if _, err := r.RoundTrip(&http.Request{}); err == nil {
 		t.Errorf("expected an error, got nil")
+	} else {
+		t.Log(err)
 	}
-	if expected, got := r.max, int(f); expected != got {
-		t.Errorf("expected %d attempts, got %d", expected, got)
+	if expected, got := 1, int(f); expected != got {
+		t.Errorf("expected %d attempt(s), got %d", expected, got)
 	}
 }
 
-func TestRetryingTransportMaxViaValidate(t *testing.T) {
+func TestRetryTransportValidateFail(t *testing.T) {
 	var c countingTransport
-	r := retryingTransport{
-		next:     &c,
+	r := retryTransport{
+		next:     []http.RoundTripper{&c},
 		validate: func(*http.Response) bool { return false },
 		cutoff:   5 * time.Second, // very high
 		max:      4,
 	}
-	if _, err := r.RoundTrip(&http.Request{}); err != nil {
-		t.Errorf("expected no error, got %v", err)
+	if _, err := r.RoundTrip(&http.Request{}); err == nil {
+		t.Errorf("expected an error, got nil")
+	} else {
+		t.Log(err)
 	}
-	if expected, got := r.max, int(c); expected != got {
-		t.Errorf("expected %d attempts, got %d", expected, got)
+	if expected, got := 1, int(c); expected != got {
+		t.Errorf("expected %d attempt(s), got %d", expected, got)
 	}
 }
 
-func TestRetryingTransportCutoff(t *testing.T) {
+func TestRetryTransportCutoff(t *testing.T) {
 	d := 1 * time.Millisecond
 	var f failingTransport
-	r := retryingTransport{
-		next:     &f,
+	r := retryTransport{
+		next:     []http.RoundTripper{&f},
 		validate: func(*http.Response) bool { time.Sleep(d); return false },
 		cutoff:   10 * d,
 		max:      math.MaxInt32,
@@ -97,6 +77,27 @@ func TestRetryingTransportCutoff(t *testing.T) {
 
 	if err == nil {
 		t.Errorf("expected an error, got nil")
+	}
+	t.Log(err)
+}
+
+func TestRetryTransportRetrySuccess(t *testing.T) {
+	var f failingTransport
+	var p passingTransport
+	r := retryTransport{
+		next:     []http.RoundTripper{&f, &f, &p},
+		validate: func(*http.Response) bool { return true },
+		cutoff:   5 * time.Second, // very high
+		max:      3,               // >= len(next)
+	}
+	n := 100
+	for i := 0; i < n; i++ {
+		if _, err := r.RoundTrip(&http.Request{}); err != nil {
+			t.Errorf("expected no error, got: %s", err)
+		}
+	}
+	if expected, got := n, int(p); expected != got {
+		t.Errorf("expected %d attempt(s), got %d", expected, got)
 	}
 }
 
@@ -174,9 +175,10 @@ func TestUpdatingTransport(t *testing.T) {
 
 func TestResilientTransport(t *testing.T) {
 	out, _ := exec.Command("ulimit", "-n").CombinedOutput()
-	ulimit, _ := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	outStr := strings.TrimSpace(string(out))
+	ulimit, _ := strconv.ParseInt(outStr, 10, 64)
 	if ulimit < 10000 {
-		t.Logf("To run this test, set ulimit -n to at least 10000 (currently %s, %d)", out, ulimit)
+		t.Logf("To run this test, set ulimit -n to at least 10000 (currently understood to be %d)", ulimit)
 		return
 	}
 
@@ -270,7 +272,14 @@ type failingTransport int
 
 func (t *failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	(*t)++
-	return nil, fmt.Errorf("fail")
+	return nil, fmt.Errorf("failing transport fail")
+}
+
+type passingTransport int
+
+func (t *passingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	(*t)++
+	return &http.Response{}, nil
 }
 
 func url2endpoint(t *testing.T, rawurl string) Endpoint {
