@@ -1,7 +1,6 @@
 package srvproxy
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -11,12 +10,6 @@ import (
 
 	"github.com/streadway/handy/breaker"
 	proxypkg "github.com/streadway/handy/proxy"
-)
-
-var (
-	// ErrNoTransportAvailable is returned by the choosing
-	// transport when no underlying transport will allow the request.
-	ErrNoTransportAvailable = errors.New("no successful transport available")
 )
 
 // retryTransport forwards the request to each next RoundTripper in random
