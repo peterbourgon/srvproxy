@@ -10,20 +10,20 @@ type HostProvider interface {
 }
 
 // Proxying implements host proxying logic.
-func Proxying(hp HostProvider, next Client) Client {
+func Proxying(p HostProvider, next Client) Client {
 	return &proxying{
-		hp:     hp,
-		Client: next,
+		HostProvider: p,
+		Client:       next,
 	}
 }
 
 type proxying struct {
-	hp HostProvider
+	HostProvider
 	Client
 }
 
 func (p proxying) Do(req *http.Request) (*http.Response, error) {
-	host, err := p.hp.Get()
+	host, err := p.HostProvider.Get()
 	if err != nil {
 		return nil, err
 	}
@@ -32,9 +32,9 @@ func (p proxying) Do(req *http.Request) (*http.Response, error) {
 	resp, err := p.Client.Do(req)
 
 	if err == nil {
-		p.hp.Put(host, true)
+		p.HostProvider.Put(host, true)
 	} else {
-		p.hp.Put(host, false)
+		p.HostProvider.Put(host, false)
 	}
 
 	return resp, err
