@@ -15,7 +15,7 @@ func Retrying(max int, cutoff time.Duration, next Client) Client {
 type retrying struct {
 	max    int
 	cutoff time.Duration
-	next   Client
+	Client
 }
 
 func (r retrying) Do(req *http.Request) (*http.Response, error) {
@@ -37,7 +37,7 @@ func (r retrying) Do(req *http.Request) (*http.Response, error) {
 			break
 		}
 
-		resp, err := r.next.Do(req)
+		resp, err := r.Client.Do(req)
 		if err == nil {
 			return resp, nil
 		}

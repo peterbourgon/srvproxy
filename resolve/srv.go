@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// ResolveSRV resolves the name via a DNS SRV lookup.
-func ResolveSRV(name string) ([]string, time.Duration, error) {
+// DNSSRV resolves the name via a DNS SRV lookup.
+func DNSSRV(name string) ([]string, time.Duration, error) {
 	_, addrs, err := net.LookupSRV("", "", name)
 	if err != nil {
 		return []string{}, 0, err

@@ -33,7 +33,7 @@ func Instrumented(next Client) Client {
 	return &instrumented{next}
 }
 
-type instrumented struct{ next Client }
+type instrumented struct{ Client }
 
 func (i instrumented) Do(req *http.Request) (resp *http.Response, err error) {
 	defer func(begin time.Time) {
@@ -49,5 +49,5 @@ func (i instrumented) Do(req *http.Request) (resp *http.Response, err error) {
 		requestTime.WithLabelValues(labelValues).Observe(observation)
 	}(time.Now())
 
-	return i.next.Do(req)
+	return i.Client.Do(req)
 }
