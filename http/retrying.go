@@ -2,7 +2,7 @@ package http
 
 import (
 	"errors"
-	stdhttp "net/http"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -18,7 +18,7 @@ type retrying struct {
 	next   Client
 }
 
-func (r retrying) Do(req *stdhttp.Request) (*stdhttp.Response, error) {
+func (r retrying) Do(req *http.Request) (*http.Response, error) {
 	var (
 		deadline = time.Now().Add(r.cutoff)
 		attempt  = 0

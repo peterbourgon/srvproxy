@@ -1,10 +1,10 @@
 package http
 
 import (
-	stdhttp "net/http"
+	"net/http"
 )
 
 // Client represents a http.Client.
 type Client interface {
-	Do(*stdhttp.Request) (*stdhttp.Response, error)
+	Do(*http.Request) (*http.Response, error)
 }

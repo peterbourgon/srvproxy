@@ -1,6 +1,6 @@
 package http
 
-import stdhttp "net/http"
+import "net/http"
 
 // HostProvider describes something which can yield hosts for transactions,
 // and record a given host's success/failure.
@@ -22,7 +22,7 @@ type proxying struct {
 	next Client
 }
 
-func (p proxying) Do(req *stdhttp.Request) (*stdhttp.Response, error) {
+func (p proxying) Do(req *http.Request) (*http.Response, error) {
 	host, err := p.p.Get()
 	if err != nil {
 		return nil, err

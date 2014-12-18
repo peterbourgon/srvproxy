@@ -2,7 +2,7 @@ package http
 
 import (
 	"expvar"
-	stdhttp "net/http"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -35,7 +35,7 @@ func Instrumented(next Client) Client {
 
 type instrumented struct{ next Client }
 
-func (i instrumented) Do(req *stdhttp.Request) (resp *stdhttp.Response, err error) {
+func (i instrumented) Do(req *http.Request) (resp *http.Response, err error) {
 	defer func(begin time.Time) {
 		requestCount.Add(1)
 		if err == nil {
