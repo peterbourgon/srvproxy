@@ -3,7 +3,7 @@ package http
 import stdhttp "net/http"
 
 // HostProvider describes something which can yield hosts for transactions,
-// and record transaction success against a yielded host.
+// and record a given host's success/failure.
 type HostProvider interface {
 	Get() (host string, err error)
 	Put(host string, success bool)
