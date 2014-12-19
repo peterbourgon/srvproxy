@@ -13,7 +13,7 @@ import (
 
 func TestRetryingMax(t *testing.T) {
 	var (
-		server     = httptest.NewServer(failingHandler(2))
+		server     = httptest.NewServer(failingHandler(2, time.Nanosecond))
 		client     = srvhttp.Retrying(3, time.Hour, ok, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL, nil)
 	)
@@ -27,7 +27,7 @@ func TestRetryingMax(t *testing.T) {
 
 func TestRetryingCutoff(t *testing.T) {
 	var (
-		server     = httptest.NewServer(slowHandler(time.Millisecond))
+		server     = httptest.NewServer(failingHandler(999, time.Millisecond))
 		client     = srvhttp.Retrying(999, time.Microsecond, ok, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL, nil)
 	)
@@ -41,21 +41,29 @@ func TestRetryingCutoff(t *testing.T) {
 	}
 }
 
-func failingHandler(n int) http.HandlerFunc {
+func TestRetryingNoCutoff(t *testing.T) {
+	var (
+		server     = httptest.NewServer(failingHandler(50, time.Microsecond))
+		client     = srvhttp.Retrying(999, 0, ok, http.DefaultClient)
+		request, _ = http.NewRequest("GET", server.URL, nil)
+	)
+
+	defer server.Close()
+
+	if _, err := client.Do(request); err != nil {
+		t.Error(err)
+	}
+}
+
+func failingHandler(n int, d time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(d)
 		n--
 		if n >= 0 {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-	}
-}
-
-func slowHandler(d time.Duration) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(d)
-		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 
