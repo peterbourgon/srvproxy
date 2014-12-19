@@ -11,8 +11,8 @@ func SimpleSuccess(_ *http.Response, err error) bool { return err == nil }
 
 // Director provides request director functionality over a pool. The host
 // portion of the request URL is rewritten to a host taken from the pool. The
-// host is returned to the pool when the request has completed. Transaction
-// success is determined by the SuccessFunc.
+// host is returned to the pool when the request has completed, with success
+// determined by the SuccessFunc.
 func Director(p Pool, s SuccessFunc) func(*http.Request) func(*http.Response, error) {
 	return func(req *http.Request) func(*http.Response, error) {
 		host, err := p.Get()
