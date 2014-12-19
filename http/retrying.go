@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-var now = time.Now
-
 // Retrying implements request retry logic. Requests should be idempotent.
 func Retrying(max int, cutoff time.Duration, ok func(*http.Response) error, next Client) Client {
 	return &retrying{max, cutoff, ok, next}
@@ -43,11 +41,11 @@ func (r retrying) Do(req *http.Request) (*http.Response, error) {
 	)
 
 	if r.cutoff > 0 {
-		deadline = now().Add(r.cutoff)
+		deadline = time.Now().Add(r.cutoff)
 	}
 
 	for {
-		if !deadline.IsZero() && now().After(deadline) {
+		if !deadline.IsZero() && time.Now().After(deadline) {
 			errs = append(errs, "deadline reached")
 			break
 		}
