@@ -7,26 +7,29 @@ import (
 	"time"
 )
 
+var now = time.Now
+
 // Retrying implements request retry logic.
-func Retrying(max int, cutoff time.Duration, next Client) Client {
-	return &retrying{max, cutoff, next}
+func Retrying(max int, cutoff time.Duration, ok func(*http.Response) error, next Client) Client {
+	return &retrying{max, cutoff, ok, next}
 }
 
 type retrying struct {
 	max    int
 	cutoff time.Duration
+	ok     func(*http.Response) error
 	Client
 }
 
 func (r retrying) Do(req *http.Request) (*http.Response, error) {
 	var (
-		deadline = time.Now().Add(r.cutoff)
+		deadline = now().Add(r.cutoff)
 		attempt  = 0
 		errs     = []string{}
 	)
 
 	for {
-		if time.Now().After(deadline) {
+		if now().After(deadline) {
 			errs = append(errs, "deadline reached")
 			break
 		}
@@ -38,11 +41,17 @@ func (r retrying) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		resp, err := r.Client.Do(req)
-		if err == nil {
-			return resp, nil
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
 		}
 
-		errs = append(errs, err.Error())
+		if err = r.ok(resp); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+
+		return resp, nil
 	}
 
 	return nil, errors.New(strings.Join(errs, "; "))
