@@ -24,7 +24,7 @@ func New(name string, options Options) http.Client {
 	var c http.Client
 	c = options.Client
 	c = http.Directed(d, c)
-	c = http.Retrying(options.MaxAttempts, options.Cutoff, options.ResponseValidator, c)
+	c = http.Retrying(options.MaxAttempts, options.Timeout, options.ResponseValidator, c)
 	c = http.Instrumented(c)
 
 	return c
@@ -55,18 +55,17 @@ type Options struct {
 	// sequential hosts from the Pool. The default value is 3.
 	MaxAttempts int
 
-	// Cutoff determines the deadline for an individual request, after which
+	// Timeout determines the deadline for an individual request, after which
 	// no more attempts will be made, and the request aborted. The default is
-	// no cutoff.
-	Cutoff time.Duration
+	// no timeout.
+	Timeout time.Duration
 
 	// ResponseValidator determines if an HTTP response is considered valid
 	// and can be returned to the calling context. That is, if
 	// ResponseValidator returns a non-nil error for an HTTP response, the
 	// request may be retried.
 	//
-	// If ResponseValidator is nil, any HTTP response with a 1xx, 2xx, 3xx, or
-	// 4xx status code will be considered valid, and won't be retried.
+	// If ResponseValidator is nil, http.SimpleValidator is used.
 	ResponseValidator http.ValidateFunc
 }
 

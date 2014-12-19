@@ -25,7 +25,7 @@ func TestRetryingMax(t *testing.T) {
 	}
 }
 
-func TestRetryingCutoff(t *testing.T) {
+func TestRetryingTimeout(t *testing.T) {
 	var (
 		server     = httptest.NewServer(failingHandler(999, time.Millisecond))
 		client     = srvhttp.Retrying(999, time.Microsecond, ok, http.DefaultClient)
@@ -41,7 +41,7 @@ func TestRetryingCutoff(t *testing.T) {
 	}
 }
 
-func TestRetryingNoCutoff(t *testing.T) {
+func TestRetryingNoTimeout(t *testing.T) {
 	var (
 		server     = httptest.NewServer(failingHandler(50, time.Microsecond))
 		client     = srvhttp.Retrying(999, 0, ok, http.DefaultClient)
