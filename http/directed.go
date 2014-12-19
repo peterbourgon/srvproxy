@@ -2,7 +2,7 @@ package http
 
 import "net/http"
 
-// Director receives and may modify an http.Request, and returns a function
+// Director receives and may modify an http.Request. It returns a function
 // which will be called with the result of that request.
 type Director interface {
 	Direct(*http.Request) func(*http.Response, error)

@@ -8,17 +8,18 @@ import (
 	"time"
 )
 
-// Retrying implements request retry logic. Requests should be idempotent.
+// Retrying implements request retry logic. Requests must be idempotent.
 func Retrying(max int, cutoff time.Duration, ok func(*http.Response) error, next Client) Client {
 	return &retrying{max, cutoff, ok, next}
 }
 
-// ValidateFunc shall return a non-nil error if the http.Response is
-// considered invalid, and the request should be retried.
+// ValidateFunc determines if an HTTP response is invalid and should be
+// retried. A nil error indicates a valid response, which can be returned to
+// the caller.
 type ValidateFunc func(*http.Response) error
 
-// SimpleValidator returns a nil error for any 1xx, 2xx, 3xx, or 4xx response
-// code.
+// SimpleValidator considers a response with a 1xx, 2xx, 3xx, or 4xx response
+// code valid, and returns an error for any other (higher) response code.
 func SimpleValidator(resp *http.Response) error {
 	if resp.StatusCode <= 499 {
 		return nil
