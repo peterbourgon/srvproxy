@@ -4,7 +4,9 @@ import "sync"
 
 // RoundRobin returns a plain round-robining Pool. Put is a no-op.
 func RoundRobin(hosts []string) Pool {
-	return roundRobin{hosts}
+	return &roundRobin{
+		hosts: hosts,
+	}
 }
 
 type roundRobin struct {
