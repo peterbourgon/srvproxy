@@ -1,75 +1,110 @@
 package pool
 
-import "sync/atomic"
+import (
+	"time"
+
+	"sync"
+)
 
 // PriorityQueue returns a Pool that yields hosts according to their recent
 // successes or failures.
-func PriorityQueue(hosts []string) Pool {
-	return &priorityQueue{
-		hosts:  hosts,
-		scores: make([]int64, len(hosts)),
-		robin:  -1,
+func PriorityQueue(recycle time.Duration) func([]string) Pool {
+	return func(hosts []string) Pool {
+		return &priorityQueue{
+			good:     newHosts(hosts),
+			bad:      newHosts([]string{}),
+			recycle:  recycle,
+			deadline: time.Now().Add(recycle),
+		}
 	}
 }
 
 type priorityQueue struct {
-	hosts  []string
-	scores []int64
-	robin  int64
+	good     *hosts
+	bad      *hosts
+	recycle  time.Duration
+	deadline time.Time
 }
 
 func (pq *priorityQueue) Get() (string, error) {
-	if len(pq.hosts) <= 0 {
-		return "", ErrNoHosts
+	first, second := pq.good, pq.bad
+
+	if time.Now().After(pq.deadline) {
+		first, second = second, first
+		pq.deadline = time.Now().Add(pq.recycle)
 	}
 
-	var robin int
-	for {
-		var (
-			vold = atomic.LoadInt64(&pq.robin)
-			vnew = vold + 1
-		)
-		if atomic.CompareAndSwapInt64(&pq.robin, vold, vnew) {
-			robin = int(vnew)
-			break
+	if host, err := first.get(); err == nil {
+		return host, nil
+	}
+
+	host, err := second.get()
+	return host, err
+}
+
+func (pq *priorityQueue) Put(host string, success bool) {
+	// When a host transitions from one set to the other, there's a brief
+	// period when it's present in both. That's fine.
+	if success {
+		pq.good.add(host)
+		pq.bad.remove(host)
+	} else {
+		pq.bad.add(host)
+		pq.good.remove(host)
+	}
+}
+
+type hosts struct {
+	sync.RWMutex
+	a []string
+	p int
+}
+
+func newHosts(a []string) *hosts {
+	h := &hosts{
+		a: []string{},
+		p: 0,
+	}
+	for _, host := range a {
+		h.add(host)
+	}
+	return h
+}
+
+func (h *hosts) add(host string) {
+	h.Lock()
+	defer h.Unlock()
+
+	for _, s := range h.a {
+		if s == host {
+			return
 		}
 	}
 
-	for { // find-a-zero
-		for i := range pq.scores { // check all the scores
-			index := (i + robin) % len(pq.scores)
-			for { // individual score CAS
-				if v := atomic.LoadInt64(&pq.scores[index]); v == 0 {
-					return pq.hosts[index], nil
-				} else if v < 0 {
-					panic("impossible")
-				} else if atomic.CompareAndSwapInt64(&pq.scores[index], v, v-1) {
-					break
-				}
-			}
+	h.a = append(h.a, host)
+}
+
+func (h *hosts) remove(host string) {
+	h.Lock()
+	defer h.Unlock()
+
+	for i, s := range h.a {
+		if s == host {
+			h.a = append(h.a[:i], h.a[i+1:]...)
+			return
 		}
 	}
 }
 
-func (pq *priorityQueue) Put(host string, success bool) {
-	for i, candidate := range pq.hosts {
-		if candidate != host {
-			continue
-		}
+func (h *hosts) get() (string, error) {
+	h.Lock()
+	defer h.Unlock()
 
-		for {
-			vold := atomic.LoadInt64(&pq.scores[i])
-
-			vnew := vold + 1
-			if success {
-				vnew = 0
-			}
-
-			if atomic.CompareAndSwapInt64(&pq.scores[i], vold, vnew) {
-				return
-			}
-		}
+	if len(h.a) <= 0 {
+		return "", ErrNoHosts
 	}
 
-	panic("bad Put")
+	host := h.a[h.p%len(h.a)]
+	h.p = (h.p + 1) % len(h.a)
+	return host, nil
 }
