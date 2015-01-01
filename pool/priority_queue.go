@@ -61,51 +61,47 @@ func (pq *priorityQueue) Put(host string, success bool) {
 
 func (pq *priorityQueue) Close() {
 	for _, h := range pq.hosts {
-		h.quit()
+		h.close()
 	}
 }
 
 type host struct {
-	sometimesc chan<- string
-	alwaysc    chan<- string
-	signalc    chan bool
-	quitc      chan chan struct{}
+	signal chan bool
+	quit   chan chan struct{}
 }
 
 func newHost(hoststr string, sometimes, always chan<- string, recycle time.Duration) *host {
 	h := &host{
-		sometimesc: sometimes,
-		alwaysc:    always,
-		signalc:    make(chan bool),
-		quitc:      make(chan chan struct{}),
+		signal: make(chan bool),
+		quit:   make(chan chan struct{}),
 	}
-	go h.loop(hoststr, recycle)
+	go h.loop(hoststr, sometimes, always, recycle)
 	return h
 }
 
-func (h *host) loop(hoststr string, recycle time.Duration) {
+func (h *host) loop(hoststr string, sometimes, always chan<- string, recycle time.Duration) {
 	var (
-		sometimesc = h.sometimesc
-		resetc     <-chan time.Time
+		indirect = sometimes
+		reset    <-chan time.Time
 	)
 
 	for {
 		select {
-		case sometimesc <- hoststr:
+		case indirect <- hoststr:
 
-		case h.alwaysc <- hoststr:
+		case always <- hoststr:
 
-		case success := <-h.signalc:
-			if !success && resetc == nil {
-				resetc = time.After(recycle)
-				sometimesc = nil
+		case success := <-h.signal:
+			if !success && reset == nil {
+				reset = time.After(recycle)
+				indirect = nil
 			}
 
-		case <-resetc:
-			resetc = nil
-			sometimesc = h.sometimesc
+		case <-reset:
+			reset = nil
+			indirect = sometimes
 
-		case q := <-h.quitc:
+		case q := <-h.quit:
 			close(q)
 			return
 		}
@@ -113,11 +109,11 @@ func (h *host) loop(hoststr string, recycle time.Duration) {
 }
 
 func (h *host) put(success bool) {
-	h.signalc <- success
+	h.signal <- success
 }
 
-func (h *host) quit() {
+func (h *host) close() {
 	q := make(chan struct{})
-	h.quitc <- q
+	h.quit <- q
 	<-q
 }
