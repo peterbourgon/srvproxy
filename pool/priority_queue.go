@@ -1,110 +1,123 @@
 package pool
 
 import (
+	"runtime"
 	"time"
-
-	"sync"
 )
 
 // PriorityQueue returns a Pool that yields hosts according to their recent
 // successes or failures.
+//
+// The pool implements a two-priority queue. It always tries to return hosts
+// from the high-prio queue first. If no hosts are available, the pool falls
+// back to the low-prio queue. When a high-prio host fails, it moves to the
+// low-prio queue, and is moved back to the high-prio queue only after the
+// recycle time.
 func PriorityQueue(recycle time.Duration) func([]string) Pool {
 	return func(hosts []string) Pool {
+		var (
+			m  = map[string]*host{}
+			hi = make(chan string)
+			lo = make(chan string)
+		)
+
+		for _, host := range hosts {
+			m[host] = newHost(host, hi, lo, recycle)
+		}
+
+		runtime.Gosched() // get the hosts ready
+
 		return &priorityQueue{
-			good:     newHosts(hosts),
-			bad:      newHosts([]string{}),
-			recycle:  recycle,
-			deadline: time.Now().Add(recycle),
+			hosts: m,
+			hi:    hi,
+			lo:    lo,
 		}
 	}
 }
 
 type priorityQueue struct {
-	good     *hosts
-	bad      *hosts
-	recycle  time.Duration
-	deadline time.Time
+	hosts map[string]*host
+	hi    chan string
+	lo    chan string
 }
 
 func (pq *priorityQueue) Get() (string, error) {
-	first, second := pq.good, pq.bad
-
-	if time.Now().After(pq.deadline) {
-		first, second = second, first
-		pq.deadline = time.Now().Add(pq.recycle)
-	}
-
-	if host, err := first.get(); err == nil {
+	select {
+	case host := <-pq.hi:
 		return host, nil
+	default:
+		select {
+		case host := <-pq.lo:
+			return host, nil
+		default:
+			return "", ErrNoHosts
+		}
 	}
-
-	host, err := second.get()
-	return host, err
 }
 
 func (pq *priorityQueue) Put(host string, success bool) {
-	// When a host transitions from one set to the other, there's a brief
-	// period when it's present in both. That's fine.
-	if success {
-		pq.good.add(host)
-		pq.bad.remove(host)
-	} else {
-		pq.bad.add(host)
-		pq.good.remove(host)
+	pq.hosts[host].put(success)
+}
+
+func (pq *priorityQueue) Close() {
+	for _, h := range pq.hosts {
+		h.quit()
 	}
 }
 
-type hosts struct {
-	sync.RWMutex
-	a []string
-	p int
+type host struct {
+	sometimesc chan<- string
+	alwaysc    chan<- string
+	signalc    chan bool
+	quitc      chan chan struct{}
 }
 
-func newHosts(a []string) *hosts {
-	h := &hosts{
-		a: []string{},
-		p: 0,
+func newHost(hoststr string, sometimes, always chan<- string, recycle time.Duration) *host {
+	h := &host{
+		sometimesc: sometimes,
+		alwaysc:    always,
+		signalc:    make(chan bool),
+		quitc:      make(chan chan struct{}),
 	}
-	for _, host := range a {
-		h.add(host)
-	}
+	go h.loop(hoststr, recycle)
 	return h
 }
 
-func (h *hosts) add(host string) {
-	h.Lock()
-	defer h.Unlock()
+func (h *host) loop(hoststr string, recycle time.Duration) {
+	var (
+		sometimesc = h.sometimesc
+		resetc     <-chan time.Time
+	)
 
-	for _, s := range h.a {
-		if s == host {
+	for {
+		select {
+		case sometimesc <- hoststr:
+
+		case h.alwaysc <- hoststr:
+
+		case success := <-h.signalc:
+			if !success && resetc == nil {
+				resetc = time.After(recycle)
+				sometimesc = nil
+			}
+
+		case <-resetc:
+			resetc = nil
+			sometimesc = h.sometimesc
+
+		case q := <-h.quitc:
+			close(q)
 			return
 		}
 	}
-
-	h.a = append(h.a, host)
 }
 
-func (h *hosts) remove(host string) {
-	h.Lock()
-	defer h.Unlock()
-
-	for i, s := range h.a {
-		if s == host {
-			h.a = append(h.a[:i], h.a[i+1:]...)
-			return
-		}
-	}
+func (h *host) put(success bool) {
+	h.signalc <- success
 }
 
-func (h *hosts) get() (string, error) {
-	h.Lock()
-	defer h.Unlock()
-
-	if len(h.a) <= 0 {
-		return "", ErrNoHosts
-	}
-
-	host := h.a[h.p%len(h.a)]
-	h.p = (h.p + 1) % len(h.a)
-	return host, nil
+func (h *host) quit() {
+	q := make(chan struct{})
+	h.quitc <- q
+	<-q
 }

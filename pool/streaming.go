@@ -11,8 +11,9 @@ import (
 // continuously updated with hosts discovered via the Resolver.
 func Streaming(r resolve.Resolver, name string, f Factory) Pool {
 	s := &streaming{
-		getc: make(chan getRequest),
-		putc: make(chan putRequest),
+		getc:   make(chan getRequest),
+		putc:   make(chan putRequest),
+		closec: make(chan struct{}),
 	}
 
 	hosts, ttl := mustResolve(r, name)
@@ -22,8 +23,9 @@ func Streaming(r resolve.Resolver, name string, f Factory) Pool {
 }
 
 type streaming struct {
-	getc chan getRequest
-	putc chan putRequest
+	getc   chan getRequest
+	putc   chan putRequest
+	closec chan struct{}
 }
 
 func (s *streaming) Get() (string, error) {
@@ -42,6 +44,10 @@ func (s *streaming) Put(host string, success bool) {
 	s.putc <- putRequest{host, success}
 }
 
+func (s *streaming) Close() {
+	s.closec <- struct{}{}
+}
+
 func (s *streaming) loop(r resolve.Resolver, name string, hosts []string, refreshc <-chan time.Time, f Factory) {
 	pool := f(hosts)
 	for {
@@ -55,8 +61,9 @@ func (s *streaming) loop(r resolve.Resolver, name string, hosts []string, refres
 				continue
 			}
 
+			pool.Close() // close the old
 			hosts = newHosts
-			pool = f(hosts)
+			pool = f(hosts) // create the new
 
 		case req := <-s.getc:
 			host, err := pool.Get()
@@ -69,6 +76,10 @@ func (s *streaming) loop(r resolve.Resolver, name string, hosts []string, refres
 
 		case req := <-s.putc:
 			pool.Put(req.host, req.success)
+
+		case <-s.closec:
+			pool.Close()
+			return
 		}
 	}
 }

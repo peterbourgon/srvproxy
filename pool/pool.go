@@ -14,6 +14,7 @@ var (
 type Pool interface {
 	Get() (host string, err error)
 	Put(host string, success bool)
+	Close()
 }
 
 // Factory converts a slice of hosts to a Pool.

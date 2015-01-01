@@ -1,10 +1,11 @@
 package pool_test
 
 import (
-	"github.com/peterbourgon/srvproxy/pool"
-
+	"math"
 	"testing"
 	"time"
+
+	"github.com/peterbourgon/srvproxy/pool"
 )
 
 func TestPriorityQueueNoFailure(t *testing.T) {
@@ -28,7 +29,43 @@ func TestPriorityQueueNoFailure(t *testing.T) {
 	}
 }
 
-func TestPriorityQueueDistribution(t *testing.T) {
+func TestPriorityQueueSingleFailure(t *testing.T) {
+	var (
+		h = []string{"a", "b", "c", "d"}
+		p = pool.PriorityQueue(time.Second)(h)
+		m = map[string]int{}
+		n = 100 * len(h)
+	)
+
+	for i := 0; i < n; i++ {
+		host, _ := p.Get()
+		m[host]++
+		success := i > 0 // first host has 1 failure
+		//t.Logf("i=%d: %q (success %v)", i, host, success)
+		p.Put(host, success)
+	}
+
+	for i, host := range h {
+		var (
+			want      = ((1.0 / float64(len(h)-1)) * 100.0)     // %
+			have      = (float64(m[host]) / float64(n)) * 100.0 // %
+			tolerance = 1.0                                     // %
+			printf    = t.Logf
+		)
+
+		if i == 0 {
+			want = 0.0 // ideally
+		}
+
+		if math.Abs(want-have) > tolerance {
+			printf = t.Errorf
+		}
+
+		printf("%q: want %.2f%%, have %.2f%%", host, want, have)
+	}
+}
+
+func TestPriorityQueueCompleteFailure(t *testing.T) {
 	var (
 		h = []string{"a", "b", "c", "d", "e", "f"}
 		f = map[string]bool{"a": true, "c": true} // fail hosts
@@ -38,12 +75,7 @@ func TestPriorityQueueDistribution(t *testing.T) {
 	)
 
 	for i := 0; i < n; i++ {
-		host, err := p.Get()
-		if err != nil {
-			t.Errorf("i=%d: %s", i, err)
-			continue
-		}
-
+		host, _ := p.Get()
 		m[host]++
 		success := !f[host]
 		//t.Logf("i=%d: %q (success %v)", i, host, success)
@@ -52,13 +84,21 @@ func TestPriorityQueueDistribution(t *testing.T) {
 
 	for _, host := range h {
 		var (
-			chosenPercent = (float64(m[host]) / float64(n)) * 100.0
-			maxPercent    = float64(n) / 100.0
+			want      = 100.0 / float64(len(m)-len(f))          // %
+			have      = (float64(m[host]) / float64(n)) * 100.0 // %
+			tolerance = 5.0                                     // %
+			printf    = t.Logf
 		)
-		t.Logf("%q: %.2f%% (max %.2f%%)", host, chosenPercent, maxPercent)
-		if _, badHost := f[host]; badHost && chosenPercent > maxPercent {
-			t.Errorf("consistently-bad host %q was chosen too often (%.2f%% > %.2f%%)", host, chosenPercent, maxPercent)
+
+		if _, ok := f[host]; ok {
+			want = 0.0
 		}
+
+		if math.Abs(want-have) > tolerance {
+			printf = t.Errorf
+		}
+
+		printf("%q: want %.2f%%, have %.2f%%", host, want, have)
 	}
 }
 
@@ -86,12 +126,16 @@ func TestPriorityQueueRecycling(t *testing.T) {
 
 	for _, host := range h {
 		var (
-			chosenPercent = (float64(m[host]) / float64(n)) * 100.0
-			minPercent    = (100.0 / float64(len(h))) - 5.0
+			want      = 100.0 / float64(len(h))                 // %
+			have      = (float64(m[host]) / float64(n)) * 100.0 // %
+			tolerance = 5.0                                     // %
+			printf    = t.Logf
 		)
-		t.Logf("%q: %.2f%% (min %.2f%%)", host, chosenPercent, minPercent)
-		if chosenPercent < minPercent {
-			t.Errorf("host %q was chosen too infrequently (%.2f%% < %.2f%%)", host, chosenPercent, minPercent)
+
+		if math.Abs(want-have) > tolerance {
+			printf = t.Errorf
 		}
+
+		printf("%q: want %.2f%%, have %.2f%%", host, want, have)
 	}
 }
