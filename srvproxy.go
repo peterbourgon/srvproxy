@@ -11,87 +11,108 @@ import (
 
 // New returns a client capable of executing HTTP requests against a set of
 // backends continuously resolved from the passed name.
-func New(name string, options Options) http.Client {
-	options = options.defaults()
+func New(name string, opts ...OptionFunc) http.Client {
+	o := makeOptions(opts...)
 
 	var p pool.Pool
-	p = pool.Streaming(options.Resolver, name, options.PoolFactory)
+	p = pool.Streaming(o.resolver, name, o.poolFactory)
 	p = pool.Instrumented(p)
 
 	var d http.Director
-	d = http.DirectorFunc(pool.Director(p, options.PoolSuccess))
+	d = http.DirectorFunc(pool.Director(p, o.poolSuccess))
 
 	var c http.Client
-	c = options.Client
+	c = o.client
 	c = http.Directed(d, c)
-	c = http.Retrying(options.MaxAttempts, options.Timeout, options.ResponseValidator, c)
+	c = http.Retrying(o.maxAttempts, o.timeout, o.responseValidator, c)
 	c = http.Instrumented(c)
 
 	return c
 }
 
-// Options configures the client.
-type Options struct {
-	// Resolver determines how the name is resolved to a set of hosts.
-	// If Resolver is nil, a DNS SRV resolver is used.
-	Resolver resolve.Resolver
+// OptionFunc sets a specific option for the srvproxy. This is the functional
+// options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
+// information.
+type OptionFunc func(*options)
 
-	// PoolFactory determines how a set of hosts is transformed into a pool,
-	// which provides get and put semantics. If PoolFactory is nil, a naïve
-	// round-robin pool is used.
-	PoolFactory pool.Factory
-
-	// PoolSuccess maps the result of an HTTP request against a specific host
-	// to success or failure. That result may optionally be used by the pool
-	// to influence how it yields hosts in the future. If PoolSuccess is nil,
-	// any valid HTTP response (any status code) is considered a success.
-	PoolSuccess pool.SuccessFunc
-
-	// Client is the base http.Client used to send requests. If Client is nil,
-	// http.DefaultClient is used.
-	Client http.Client
-
-	// MaxAttempts is how many times to attempt each HTTP request against
-	// sequential hosts from the Pool. The default value is 3.
-	MaxAttempts int
-
-	// Timeout determines the deadline for an individual request, after which
-	// no more attempts will be made, and the request aborted. The default is
-	// no timeout.
-	Timeout time.Duration
-
-	// ResponseValidator determines if an HTTP response is considered valid
-	// and can be returned to the calling context. That is, if
-	// ResponseValidator returns a non-nil error for an HTTP response, the
-	// request may be retried.
-	//
-	// If ResponseValidator is nil, http.SimpleValidator is used.
-	ResponseValidator http.ValidateFunc
+// Resolver sets the resolver, used to translate the name to a set of hosts.
+//
+// If Resolver isn't provided, a DNS SRV resolver is used.
+func Resolver(r resolve.Resolver) OptionFunc {
+	return func(o *options) { o.resolver = r }
 }
 
-func (o Options) defaults() Options {
-	if o.Resolver == nil {
-		o.Resolver = resolve.ResolverFunc(resolve.DNSSRV)
+// PoolFactory sets the pool factory function, which converts a set of hosts
+// to a single pool.
+//
+// If PoolFactory isn't provided, a pool factory that generates priority-queue
+// based pools is used.
+func PoolFactory(f pool.Factory) OptionFunc {
+	return func(o *options) { o.poolFactory = f }
+}
+
+// PoolSuccess sets the function that determines if a HTTP response against a
+// specific host in a pool should be considered successful. That result may
+// optionally be used by the pool to influence how it yields hosts in the
+// future.
+//
+// If PoolSuccess isn't provided, any valid HTTP response (any status code) is
+// considered successful.
+func PoolSuccess(f pool.SuccessFunc) OptionFunc {
+	return func(o *options) { o.poolSuccess = f }
+}
+
+// Client sets the default, underlying HTTP client used to send requests.
+//
+// If Client isn't provided, http.DefaultClient is used.
+func Client(c http.Client) OptionFunc {
+	return func(o *options) { o.client = c }
+}
+
+// MaxAttempts sets the number of attempts to complete a single HTTP request.
+// If MaxAttempts isn't provided, the default value is 3.
+func MaxAttempts(n int) OptionFunc {
+	return func(o *options) { o.maxAttempts = n }
+}
+
+// Timeout sets the maximum time to complete a single HTTP request. If Timeout
+// isn't provided, the default value is zero, i.e. no timeout
+func Timeout(d time.Duration) OptionFunc {
+	return func(o *options) { o.timeout = d }
+}
+
+// ResponseValidator sets the function that determines if a HTTP response is
+// valid and may be returned to the client. That is, if ResponseValidator
+// returns a non-nil error, the request may be retried.
+//
+// If ResponseValidator isn't provided, http.SimpleValidator is used.
+func ResponseValidator(f http.ValidateFunc) OptionFunc {
+	return func(o *options) { o.responseValidator = f }
+}
+
+type options struct {
+	resolver          resolve.Resolver
+	poolFactory       pool.Factory
+	poolSuccess       pool.SuccessFunc
+	client            http.Client
+	maxAttempts       int
+	timeout           time.Duration
+	responseValidator http.ValidateFunc
+}
+
+func makeOptions(opts ...OptionFunc) options {
+	o := options{
+		resolver:          resolve.ResolverFunc(resolve.DNSSRV),
+		poolFactory:       pool.RoundRobin,
+		poolSuccess:       pool.SimpleSuccess,
+		client:            stdhttp.DefaultClient,
+		maxAttempts:       3,
+		timeout:           0,
+		responseValidator: http.SimpleValidator,
 	}
 
-	if o.PoolFactory == nil {
-		o.PoolFactory = pool.RoundRobin
-	}
-
-	if o.PoolSuccess == nil {
-		o.PoolSuccess = pool.SimpleSuccess
-	}
-
-	if o.Client == nil {
-		o.Client = stdhttp.DefaultClient
-	}
-
-	if o.MaxAttempts <= 0 {
-		o.MaxAttempts = 3
-	}
-
-	if o.ResponseValidator == nil {
-		o.ResponseValidator = http.SimpleValidator
+	for _, f := range opts {
+		f(&o)
 	}
 
 	return o
