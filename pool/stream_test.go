@@ -8,12 +8,12 @@ import (
 	"github.com/peterbourgon/srvproxy/pool"
 )
 
-func TestStreaming(t *testing.T) {
+func TestStream(t *testing.T) {
 	a := "≠≠≠≠≠"
 	b := "•••••"
 	d := time.Millisecond
 	r := &fixedResolver{[]string{a}, d}
-	p := pool.Streaming(r, "irrelevant", pool.RoundRobin)
+	p := pool.Stream(r, "irrelevant", pool.RoundRobin)
 
 	if err := waitGet(p, time.Millisecond); err != nil {
 		t.Fatal(err)

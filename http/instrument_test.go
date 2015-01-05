@@ -21,7 +21,7 @@ func TestInstrumented(t *testing.T) {
 	fail := httptest.NewServer(codeWriter(http.StatusTeapot))
 	fail.Close() // immediately, to generate errors
 
-	ins := Instrumented(http.DefaultClient)
+	ins := Instrument(http.DefaultClient)
 	ins.Do(mustNewRequest("GET", pass.URL))
 	ins.Do(mustNewRequest("GET", fail.URL))
 

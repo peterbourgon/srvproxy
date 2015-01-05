@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// Retrying implements request retry logic. Requests must be idempotent.
-func Retrying(max int, timeout time.Duration, ok func(*http.Response) error, next Client) Client {
-	return &retrying{max, timeout, ok, next}
+// Retry implements request retry logic. Requests must be idempotent.
+func Retry(max int, timeout time.Duration, ok func(*http.Response) error, next Client) Client {
+	return &retry{max, timeout, ok, next}
 }
 
 // ValidateFunc determines if an HTTP response is invalid and should be
@@ -27,14 +27,14 @@ func SimpleValidator(resp *http.Response) error {
 	return fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 }
 
-type retrying struct {
+type retry struct {
 	max     int
 	timeout time.Duration
 	ok      ValidateFunc
 	Client
 }
 
-func (r retrying) Do(req *http.Request) (*http.Response, error) {
+func (r retry) Do(req *http.Request) (*http.Response, error) {
 	var (
 		deadline time.Time
 		attempt  = 0

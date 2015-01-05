@@ -42,14 +42,14 @@ var (
 	)
 )
 
-// Instrumented records metrics for operations against the wrapped Pool.
-func Instrumented(next Pool) Pool {
-	return instrumented{next}
+// Instrument records metrics for operations against the wrapped Pool.
+func Instrument(next Pool) Pool {
+	return instrument{next}
 }
 
-type instrumented struct{ Pool }
+type instrument struct{ Pool }
 
-func (i instrumented) Get() (string, error) {
+func (i instrument) Get() (string, error) {
 	getCount.Add(1)
 	outstanding.Add(1)
 	promGetCount.Add(1)
@@ -58,7 +58,7 @@ func (i instrumented) Get() (string, error) {
 	return i.Pool.Get()
 }
 
-func (i instrumented) Put(s string, b bool) {
+func (i instrument) Put(s string, b bool) {
 	i.Pool.Put(s, b)
 
 	outstanding.Add(-1)

@@ -20,7 +20,7 @@ func TestDirected(t *testing.T) {
 	var (
 		server     = httptest.NewServer(http.HandlerFunc(handler))
 		director   = &pathDirector{"/418", 0}
-		client     = srvhttp.Directed(director, http.DefaultClient)
+		client     = srvhttp.Direct(director, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL+"/200", nil)
 	)
 

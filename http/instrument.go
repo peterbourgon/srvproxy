@@ -28,14 +28,14 @@ var (
 	)
 )
 
-// Instrumented records request metrics.
-func Instrumented(next Client) Client {
-	return &instrumented{next}
+// Instrument records request metrics.
+func Instrument(next Client) Client {
+	return &instrument{next}
 }
 
-type instrumented struct{ Client }
+type instrument struct{ Client }
 
-func (i instrumented) Do(req *http.Request) (resp *http.Response, err error) {
+func (i instrument) Do(req *http.Request) (resp *http.Response, err error) {
 	defer func(begin time.Time) {
 		requestCount.Add(1)
 		if err == nil {

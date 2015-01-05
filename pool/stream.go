@@ -7,10 +7,10 @@ import (
 	"github.com/peterbourgon/srvproxy/resolve"
 )
 
-// Streaming returns a Pool, created from the passed Factory, that's
-// continuously updated with hosts discovered via the Resolver.
-func Streaming(r resolve.Resolver, name string, f Factory) Pool {
-	s := &streaming{
+// Stream returns a Pool, created from the passed Factory, that's continuously
+// updated with hosts discovered via the Resolver.
+func Stream(r resolve.Resolver, name string, f Factory) Pool {
+	s := &stream{
 		getc:   make(chan getRequest),
 		putc:   make(chan putRequest),
 		closec: make(chan struct{}),
@@ -22,13 +22,13 @@ func Streaming(r resolve.Resolver, name string, f Factory) Pool {
 	return s
 }
 
-type streaming struct {
+type stream struct {
 	getc   chan getRequest
 	putc   chan putRequest
 	closec chan struct{}
 }
 
-func (s *streaming) Get() (string, error) {
+func (s *stream) Get() (string, error) {
 	req := getRequest{make(chan string), make(chan error)}
 	s.getc <- req
 
@@ -40,15 +40,15 @@ func (s *streaming) Get() (string, error) {
 	}
 }
 
-func (s *streaming) Put(host string, success bool) {
+func (s *stream) Put(host string, success bool) {
 	s.putc <- putRequest{host, success}
 }
 
-func (s *streaming) Close() {
+func (s *stream) Close() {
 	s.closec <- struct{}{}
 }
 
-func (s *streaming) loop(r resolve.Resolver, name string, hosts []string, refreshc <-chan time.Time, f Factory) {
+func (s *stream) loop(r resolve.Resolver, name string, hosts []string, refreshc <-chan time.Time, f Factory) {
 	pool := f(hosts)
 	for {
 		select {

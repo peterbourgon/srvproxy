@@ -18,17 +18,17 @@ func (f DirectorFunc) Direct(req *http.Request) func(*http.Response, error) {
 	return f(req)
 }
 
-// Directed wraps a Client with a Director.
-func Directed(d Director, next Client) Client {
-	return directed{d, next}
+// Direct wraps a Client with a Director.
+func Direct(d Director, next Client) Client {
+	return direct{d, next}
 }
 
-type directed struct {
+type direct struct {
 	Director
 	Client
 }
 
-func (d directed) Do(req *http.Request) (*http.Response, error) {
+func (d direct) Do(req *http.Request) (*http.Response, error) {
 	result := d.Director.Direct(req)
 	resp, err := d.Client.Do(req)
 	result(resp, err)

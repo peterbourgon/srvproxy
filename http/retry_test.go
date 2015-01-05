@@ -14,7 +14,7 @@ import (
 func TestRetryingMax(t *testing.T) {
 	var (
 		server     = httptest.NewServer(failingHandler(2, time.Nanosecond))
-		client     = srvhttp.Retrying(3, time.Hour, ok, http.DefaultClient)
+		client     = srvhttp.Retry(3, time.Hour, ok, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL, nil)
 	)
 
@@ -28,7 +28,7 @@ func TestRetryingMax(t *testing.T) {
 func TestRetryingTimeout(t *testing.T) {
 	var (
 		server     = httptest.NewServer(failingHandler(999, time.Millisecond))
-		client     = srvhttp.Retrying(999, time.Microsecond, ok, http.DefaultClient)
+		client     = srvhttp.Retry(999, time.Microsecond, ok, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL, nil)
 	)
 
@@ -44,7 +44,7 @@ func TestRetryingTimeout(t *testing.T) {
 func TestRetryingNoTimeout(t *testing.T) {
 	var (
 		server     = httptest.NewServer(failingHandler(50, time.Microsecond))
-		client     = srvhttp.Retrying(999, 0, ok, http.DefaultClient)
+		client     = srvhttp.Retry(999, 0, ok, http.DefaultClient)
 		request, _ = http.NewRequest("GET", server.URL, nil)
 	)
 

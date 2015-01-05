@@ -17,17 +17,17 @@ func New(name string, opts ...OptionFunc) http.Client {
 	o := makeOptions(opts...)
 
 	var p pool.Pool
-	p = pool.Streaming(o.resolver, name, o.poolFactory)
-	p = pool.Instrumented(p)
+	p = pool.Stream(o.resolver, name, o.poolFactory)
+	p = pool.Instrument(p)
 
 	var d http.Director
 	d = http.DirectorFunc(pool.Director(p, o.poolSuccess))
 
 	var c http.Client
 	c = o.client
-	c = http.Directed(d, c)
-	c = http.Retrying(o.maxAttempts, o.timeout, o.responseValidator, c)
-	c = http.Instrumented(c)
+	c = http.Direct(d, c)
+	c = http.Retry(o.maxAttempts, o.timeout, o.responseValidator, c)
+	c = http.Instrument(c)
 	c = http.Report(o.reportWriter, c)
 
 	return c
@@ -39,8 +39,7 @@ func New(name string, opts ...OptionFunc) http.Client {
 type OptionFunc func(*options)
 
 // Resolver sets the resolver, used to translate the name to a set of hosts.
-//
-// If Resolver isn't provided, a DNS SRV resolver is used.
+// If Resolver isn't provided, a DNS SRV resolver with a 5 second TTL is used.
 func Resolver(r resolve.Resolver) OptionFunc {
 	return func(o *options) { o.resolver = r }
 }
