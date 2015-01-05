@@ -44,7 +44,12 @@ func (i instrumented) Do(req *http.Request) (resp *http.Response, err error) {
 			failCount.Add(1)
 		}
 
-		labelValues := strconv.FormatInt(int64(resp.StatusCode), 10)
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+
+		labelValues := strconv.FormatInt(int64(statusCode), 10)
 		observation := float64(time.Since(begin).Nanoseconds())
 		requestTime.WithLabelValues(labelValues).Observe(observation)
 	}(time.Now())
