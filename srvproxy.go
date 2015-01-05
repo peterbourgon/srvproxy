@@ -1,6 +1,8 @@
 package srvproxy
 
 import (
+	"io"
+	"io/ioutil"
 	stdhttp "net/http"
 	"time"
 
@@ -26,6 +28,7 @@ func New(name string, opts ...OptionFunc) http.Client {
 	c = http.Directed(d, c)
 	c = http.Retrying(o.maxAttempts, o.timeout, o.responseValidator, c)
 	c = http.Instrumented(c)
+	c = http.Report(o.reportWriter, c)
 
 	return c
 }
@@ -90,6 +93,13 @@ func ResponseValidator(f http.ValidateFunc) OptionFunc {
 	return func(o *options) { o.responseValidator = f }
 }
 
+// ReportWriter sets the io.Writer which will receive JSON reports for each
+// completed HTTP request. If ReportWriter isn't provided, ioutil.Discard is
+// used.
+func ReportWriter(w io.Writer) OptionFunc {
+	return func(o *options) { o.reportWriter = w }
+}
+
 type options struct {
 	resolver          resolve.Resolver
 	poolFactory       pool.Factory
@@ -98,6 +108,7 @@ type options struct {
 	maxAttempts       int
 	timeout           time.Duration
 	responseValidator http.ValidateFunc
+	reportWriter      io.Writer
 }
 
 func makeOptions(opts ...OptionFunc) options {
@@ -109,6 +120,7 @@ func makeOptions(opts ...OptionFunc) options {
 		maxAttempts:       3,
 		timeout:           0,
 		responseValidator: http.SimpleValidator,
+		reportWriter:      ioutil.Discard,
 	}
 
 	for _, f := range opts {
