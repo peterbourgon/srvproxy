@@ -7,8 +7,8 @@ import (
 	"github.com/peterbourgon/srvproxy/resolve"
 )
 
-// Stream returns a Pool, created from the passed Factory, that's continuously
-// updated with hosts discovered via the Resolver.
+// Stream returns a Pool, created via the Factory, that's continuously updated
+// with hosts resolved from the name.
 func Stream(r resolve.Resolver, name string, f Factory) Pool {
 	s := &stream{
 		getc:   make(chan getRequest),

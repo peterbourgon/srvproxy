@@ -3,10 +3,11 @@ package pool
 import "net/http"
 
 // SuccessFunc determines if an HTTP transaction is considered successful.
+// The result is noted by the pool.
 type SuccessFunc func(*http.Response, error) bool
 
-// SimpleSuccess returns true if there was no error. The response status code
-// is ignored.
+// SimpleSuccess is a SuccessFunc which returns true if there was no error.
+// The response status code is ignored.
 func SimpleSuccess(_ *http.Response, err error) bool { return err == nil }
 
 // Director provides request director functionality over a pool. The host
