@@ -1,4 +1,4 @@
-# srvproxy
+# srvproxy [![GoDoc](https://godoc.org/github.com/peterbourgon/srvproxy?status.svg)](http://godoc.org/github.com/peterbourgon/srvproxy) [![Build Status](https://travis-ci.org/peterbourgon/srvproxy.svg)](https://travis-ci.org/peterbourgon/srvproxy)
 
 Proxy for DNS SRV records.
 
