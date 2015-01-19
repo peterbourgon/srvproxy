@@ -1,4 +1,4 @@
-package srvproxy_test
+package roundtrip_test
 
 import (
 	"net/http"
@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/peterbourgon/srvproxy"
+	"github.com/peterbourgon/srvproxy/roundtrip"
 )
 
-func TestRoundTripper(t *testing.T) {
+func TestProxy(t *testing.T) {
 	count := 0
 	code := http.StatusTeapot
 	handler := func(w http.ResponseWriter, _ *http.Request) { count++; w.WriteHeader(code) }
@@ -23,9 +23,9 @@ func TestRoundTripper(t *testing.T) {
 	}
 
 	resolver := fixedResolver{[]string{u.Host}, time.Minute}
-	roundTripper := srvproxy.RoundTripper(srvproxy.Resolver(resolver))
+	proxy := roundtrip.Proxy(roundtrip.Resolver(resolver))
 	transport := &http.Transport{}
-	transport.RegisterProtocol("dummy", roundTripper)
+	transport.RegisterProtocol("dummy", proxy)
 	client := &http.Client{}
 	client.Transport = transport
 

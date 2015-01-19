@@ -1,4 +1,4 @@
-package srvproxy_test
+package roundtrip_test
 
 import (
 	"fmt"
@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/peterbourgon/srvproxy"
+	"github.com/peterbourgon/srvproxy/roundtrip"
 )
 
 func TestRetryMaxAttempts(t *testing.T) {
 	rt := &fixedRoundTripper{failFor: 2}
 	c := http.Client{}
-	c.Transport = srvproxy.Retry(srvproxy.MaxAttempts(3), srvproxy.RetryNext(rt))
+	c.Transport = roundtrip.Retry(roundtrip.MaxAttempts(3), roundtrip.RetryNext(rt))
 
 	resp, err := c.Get("http://foo")
 	if err != nil {
@@ -32,7 +32,7 @@ func TestRetryTimeout(t *testing.T) {
 	d := time.Millisecond
 	rt := &fixedRoundTripper{failUntil: time.Now().Add(d)}
 	c := http.Client{}
-	c.Transport = srvproxy.Retry(srvproxy.MaxAttempts(0), srvproxy.Timeout(2*d), srvproxy.RetryNext(rt))
+	c.Transport = roundtrip.Retry(roundtrip.MaxAttempts(0), roundtrip.Timeout(2*d), roundtrip.RetryNext(rt))
 
 	resp, err := c.Get("http://bar")
 	if err != nil {

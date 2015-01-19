@@ -7,19 +7,19 @@ Proxy for DNS SRV records.
 ```go
 var rt http.RoundTripper
 rt = http.DefaultTransport
-rt = srvproxy.RoundTripper(srvproxy.ProxyNext(rt))
-rt = srvproxy.Retry(srvproxy.RetryNext(rt))
+rt = roundtrip.Proxy(roundtrip.ProxyNext(rt))
+rt = roundtrip.Retry(roundtrip.RetryNext(rt))
 
 t := &http.Transport{}
 t.RegisterProtocol("dnssrv", rt)
 
-c := http.Client{}
-c.Transport = t
+http.DefaultClient.Transport = t
 
-resp, err := c.Get("dnssrv://foo.bar.baz.internal.net/normal/path?key=value")
+resp, err := http.Get("dnssrv://foo.bar.srv.internal.name/normal/path?key=value")
 if err != nil {
 	log.Fatal(err)
 }
 
 io.Copy(os.Stdout, resp.Body)
+resp.Body.Close()
 ```

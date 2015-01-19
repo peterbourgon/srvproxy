@@ -1,4 +1,4 @@
-package srvproxy
+package roundtrip
 
 import (
 	"fmt"
@@ -9,32 +9,33 @@ import (
 	"github.com/peterbourgon/srvproxy/resolve"
 )
 
-// RoundTripper yields a proxying RoundTripper.
+// Proxy yields a proxying RoundTripper.
 // Pass it to http.Transport.RegisterProtocol.
-func RoundTripper(opts ...ProxyOption) http.RoundTripper {
-	t := &transport{
+func Proxy(options ...ProxyOption) http.RoundTripper {
+	p := &proxy{
 		next:         http.DefaultTransport,
+		scheme:       "http",
 		resolver:     resolve.ResolverFunc(resolve.DNSSRV),
 		poolReporter: nil,
-		poolFactory:  pool.RoundRobin,
+		factory:      pool.RoundRobin,
 		registry:     nil,
 	}
-	t.setOptions(opts...)
-	t.registry = newRegistry(t.resolver, t.poolReporter, t.poolFactory)
-	return t
+	p.setOptions(options...)
+	p.registry = newRegistry(p.resolver, p.poolReporter, p.factory)
+	return p
 }
 
-type transport struct {
+type proxy struct {
 	next         http.RoundTripper
+	scheme       string
 	resolver     resolve.Resolver
 	poolReporter io.Writer
-	poolFactory  pool.Factory
+	factory      pool.Factory
 	registry     *registry
 }
 
-func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	pool := t.registry.get(req.URL.Host)
-	host, err := pool.Get()
+func (p *proxy) RoundTrip(req *http.Request) (*http.Response, error) {
+	host, err := p.registry.get(req.URL.Host).Get()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't send request: %v", err)
 	}
@@ -43,46 +44,52 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// consuming and closing the Body, including on errors."
 	// -- http://golang.org/pkg/net/http/#RoundTripper
 	newurl := (*req.URL)
-	newurl.Scheme = "http"
+	newurl.Scheme = p.scheme
 	newurl.Host = host
 	newreq := (*req)
 	newreq.URL = &newurl
 
-	return t.next.RoundTrip(&newreq)
+	return p.next.RoundTrip(&newreq)
 }
 
-// ProxyOption sets a specific option for the RoundTripper. This is the
-// functional options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ
-// for more information.
-type ProxyOption func(*transport)
+func (p *proxy) setOptions(options ...ProxyOption) {
+	for _, f := range options {
+		f(p)
+	}
+}
+
+// ProxyOption sets a specific option for the Proxy. This is the functional
+// options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
+// information.
+type ProxyOption func(*proxy)
+
+// Scheme sets the protocol scheme, probably "http" or "https". If no scheme
+// is provided, "http" is used.
+func Scheme(scheme string) ProxyOption {
+	return func(p *proxy) { p.scheme = scheme }
+}
 
 // ProxyNext sets the http.RoundTripper that's used to transport reconstructed
 // HTTP requests. If Next isn't provided, http.DefaultTransport is used.
 func ProxyNext(rt http.RoundTripper) ProxyOption {
-	return func(t *transport) { t.next = rt }
+	return func(p *proxy) { p.next = rt }
 }
 
 // Resolver sets which name resolver will be used. If Resolver isn't provided,
 // a DNS SRV resolver is used.
 func Resolver(r resolve.Resolver) ProxyOption {
-	return func(t *transport) { t.resolver = r }
+	return func(p *proxy) { p.resolver = r }
 }
 
 // PoolReporter sets the destination where the pool will report each
 // invocation as JSON-encoded events. If PoolReporter isn't provided, the pool
 // won't report any information.
 func PoolReporter(w io.Writer) ProxyOption {
-	return func(t *transport) { t.poolReporter = w }
+	return func(p *proxy) { p.poolReporter = w }
 }
 
-// PoolFactory sets which type of pool will be used. If PoolFactory isn't
-// provided, the RoundRobin pool is used.
-func PoolFactory(f pool.Factory) ProxyOption {
-	return func(t *transport) { t.poolFactory = f }
-}
-
-func (t *transport) setOptions(opts ...ProxyOption) {
-	for _, f := range opts {
-		f(t)
-	}
+// Factory sets which type of pool will be used. If Factory isn't provided,
+// the RoundRobin pool is used.
+func Factory(f pool.Factory) ProxyOption {
+	return func(p *proxy) { p.factory = f }
 }
