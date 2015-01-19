@@ -1,4 +1,4 @@
-package roundtrip_test
+package proxy_test
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/peterbourgon/srvproxy/roundtrip"
+	"github.com/peterbourgon/srvproxy/proxy"
 )
 
 func TestProxy(t *testing.T) {
@@ -23,7 +23,7 @@ func TestProxy(t *testing.T) {
 	}
 
 	resolver := fixedResolver{[]string{u.Host}, time.Minute}
-	proxy := roundtrip.Proxy(roundtrip.Resolver(resolver))
+	proxy := proxy.Proxy(proxy.Resolver(resolver))
 	transport := &http.Transport{}
 	transport.RegisterProtocol("dummy", proxy)
 	client := &http.Client{}

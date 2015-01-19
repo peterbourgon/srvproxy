@@ -1,4 +1,4 @@
-package roundtrip
+package proxy
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 // Proxy yields a proxying RoundTripper.
 // Pass it to http.Transport.RegisterProtocol.
-func Proxy(options ...ProxyOption) http.RoundTripper {
+func Proxy(options ...Option) http.RoundTripper {
 	p := &proxy{
 		next:         http.DefaultTransport,
 		scheme:       "http",
@@ -52,44 +52,44 @@ func (p *proxy) RoundTrip(req *http.Request) (*http.Response, error) {
 	return p.next.RoundTrip(&newreq)
 }
 
-func (p *proxy) setOptions(options ...ProxyOption) {
+func (p *proxy) setOptions(options ...Option) {
 	for _, f := range options {
 		f(p)
 	}
 }
 
-// ProxyOption sets a specific option for the Proxy. This is the functional
-// options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
+// Option sets a specific option for the Proxy. This is the functional options
+// idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
 // information.
-type ProxyOption func(*proxy)
+type Option func(*proxy)
 
 // Scheme sets the protocol scheme, probably "http" or "https". If no scheme
 // is provided, "http" is used.
-func Scheme(scheme string) ProxyOption {
+func Scheme(scheme string) Option {
 	return func(p *proxy) { p.scheme = scheme }
 }
 
-// ProxyNext sets the http.RoundTripper that's used to transport reconstructed
-// HTTP requests. If Next isn't provided, http.DefaultTransport is used.
-func ProxyNext(rt http.RoundTripper) ProxyOption {
+// Next sets the http.RoundTripper that's used to transport reconstructed HTTP
+// requests. If Next isn't provided, http.DefaultTransport is used.
+func Next(rt http.RoundTripper) Option {
 	return func(p *proxy) { p.next = rt }
 }
 
 // Resolver sets which name resolver will be used. If Resolver isn't provided,
 // a DNS SRV resolver is used.
-func Resolver(r resolve.Resolver) ProxyOption {
+func Resolver(r resolve.Resolver) Option {
 	return func(p *proxy) { p.resolver = r }
 }
 
 // PoolReporter sets the destination where the pool will report each
 // invocation as JSON-encoded events. If PoolReporter isn't provided, the pool
 // won't report any information.
-func PoolReporter(w io.Writer) ProxyOption {
+func PoolReporter(w io.Writer) Option {
 	return func(p *proxy) { p.poolReporter = w }
 }
 
 // Factory sets which type of pool will be used. If Factory isn't provided,
 // the RoundRobin pool is used.
-func Factory(f pool.Factory) ProxyOption {
+func Factory(f pool.Factory) Option {
 	return func(p *proxy) { p.factory = f }
 }

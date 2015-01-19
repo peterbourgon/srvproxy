@@ -1,4 +1,4 @@
-package roundtrip
+package retry
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 
 // Retry wraps a http.RoundTripper with basic retry logic. Requests are
 // assumed to be idempotent.
-func Retry(options ...RetryOption) http.RoundTripper {
+func Retry(options ...Option) http.RoundTripper {
 	r := &retry{
 		max:     3,
 		timeout: time.Second,
@@ -27,22 +27,22 @@ type retry struct {
 	next    http.RoundTripper
 }
 
-func (r *retry) setOptions(options ...RetryOption) {
+func (r *retry) setOptions(options ...Option) {
 	for _, option := range options {
 		option(r)
 	}
 }
 
-// RetryOption sets a specific option for the Retry. This is the functional
-// options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
+// Option sets a specific option for the Retry. This is the functional options
+// idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
 // information.
-type RetryOption func(*retry)
+type Option func(*retry)
 
 // MaxAttempts sets how many attempts will be made to complete the request.
 // The attempt is aborted when this value or Timeout is reached, whichever
 // comes first. A value of zero implies unlimited attempts. If MaxAttempts
 // isn't provided, a default value of 3 is used.
-func MaxAttempts(n int) RetryOption {
+func MaxAttempts(n int) Option {
 	return func(r *retry) { r.max = n }
 }
 
@@ -50,7 +50,7 @@ func MaxAttempts(n int) RetryOption {
 // request. The attempt is aborted when this value or MaxAttempts is reached,
 // whichever comes first. A value of zero implies no timeout. If Timeout isn't
 // provided, a default value of 1 second is used.
-func Timeout(d time.Duration) RetryOption {
+func Timeout(d time.Duration) Option {
 	return func(r *retry) { r.timeout = d }
 }
 
@@ -59,13 +59,13 @@ func Timeout(d time.Duration) RetryOption {
 // it should be retried. If the Pass function returns a non-nil error, the
 // request will be retried. If Pass isn't provided, a default function that
 // ignores the http.Response and returns the provided error is used.
-func Pass(f func(*http.Response, error) error) RetryOption {
+func Pass(f func(*http.Response, error) error) Option {
 	return func(r *retry) { r.pass = f }
 }
 
-// RetryNext sets the http.RoundTripper that will be used to execute the
-// requests. If RetryNext isn't provided, http.DefaultTransport is used.
-func RetryNext(rt http.RoundTripper) RetryOption {
+// Next sets the http.RoundTripper that will be used to execute the requests.
+// If Next isn't provided, http.DefaultTransport is used.
+func Next(rt http.RoundTripper) Option {
 	return func(r *retry) { r.next = rt }
 }
 

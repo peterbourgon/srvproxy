@@ -1,4 +1,4 @@
-package roundtrip
+package proxy
 
 import (
 	"testing"
