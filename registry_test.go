@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegistry(t *testing.T) {
-	registry := newRegistry(&doublingResolver{time.Millisecond}, pool.RoundRobin)
+	registry := newRegistry(&doublingResolver{time.Millisecond}, nil, pool.RoundRobin)
 
 	// A new registry should have no pools.
 	if want, have := 0, len(registry.m); want != have {

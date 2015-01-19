@@ -1,11 +1,11 @@
 package srvproxy
 
 import (
+	"io"
 	"sync"
 
-	"github.com/peterbourgon/srvproxy/resolve"
-
 	"github.com/peterbourgon/srvproxy/pool"
+	"github.com/peterbourgon/srvproxy/resolve"
 )
 
 // registry is a map of DNS SRV name to corresponding pool of hosts. If the
@@ -16,26 +16,29 @@ import (
 // important to keep the set of input hosts bounded.
 type registry struct {
 	sync.Mutex
-	r resolve.Resolver
-	f pool.Factory
-	m map[string]pool.Pool
+	resolver     resolve.Resolver
+	reportWriter io.Writer
+	factory      pool.Factory
+	m            map[string]pool.Pool
 }
 
-func newRegistry(r resolve.Resolver, f pool.Factory) *registry {
+func newRegistry(r resolve.Resolver, reportWriter io.Writer, f pool.Factory) *registry {
 	return &registry{
-		r: r,
-		f: f,
-		m: map[string]pool.Pool{},
+		resolver:     r,
+		reportWriter: reportWriter,
+		factory:      f,
+		m:            map[string]pool.Pool{},
 	}
 }
 
 func (r *registry) get(host string) pool.Pool {
 	r.Lock()
 	defer r.Unlock()
-
 	p, ok := r.m[host]
 	if !ok {
-		p = pool.Stream(r.r, host, r.f)
+		p = pool.Stream(r.resolver, host, r.factory)
+		p = pool.Report(r.reportWriter, p)
+		p = pool.Instrument(p)
 		r.m[host] = p
 	}
 	return p

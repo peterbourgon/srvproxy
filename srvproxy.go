@@ -2,6 +2,7 @@ package srvproxy
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/peterbourgon/srvproxy/pool"
@@ -12,23 +13,25 @@ import (
 // Pass it to http.Transport.RegisterProtocol.
 func RoundTripper(opts ...ProxyOption) http.RoundTripper {
 	t := &transport{
-		next:        http.DefaultTransport,
-		resolver:    resolve.ResolverFunc(resolve.DNSSRV),
-		poolFactory: pool.RoundRobin,
-		poolSuccess: pool.SimpleSuccess,
-		registry:    nil,
+		next:         http.DefaultTransport,
+		resolver:     resolve.ResolverFunc(resolve.DNSSRV),
+		poolReporter: nil,
+		poolFactory:  pool.RoundRobin,
+		poolSuccess:  pool.SimpleSuccess,
+		registry:     nil,
 	}
 	t.setOptions(opts...)
-	t.registry = newRegistry(t.resolver, t.poolFactory)
+	t.registry = newRegistry(t.resolver, t.poolReporter, t.poolFactory)
 	return t
 }
 
 type transport struct {
-	next        http.RoundTripper
-	resolver    resolve.Resolver
-	poolFactory pool.Factory
-	poolSuccess pool.SuccessFunc
-	registry    *registry
+	next         http.RoundTripper
+	resolver     resolve.Resolver
+	poolReporter io.Writer
+	poolFactory  pool.Factory
+	poolSuccess  pool.SuccessFunc
+	registry     *registry
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -67,6 +70,13 @@ func ProxyNext(rt http.RoundTripper) ProxyOption {
 // a DNS SRV resolver is used.
 func Resolver(r resolve.Resolver) ProxyOption {
 	return func(t *transport) { t.resolver = r }
+}
+
+// PoolReporter sets the destination where the pool will report each
+// invocation as JSON-encoded events. If PoolReporter isn't provided, the pool
+// won't report any information.
+func PoolReporter(w io.Writer) ProxyOption {
+	return func(t *transport) { t.poolReporter = w }
 }
 
 // PoolFactory sets which type of pool will be used. If PoolFactory isn't
