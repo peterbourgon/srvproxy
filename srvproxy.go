@@ -17,7 +17,6 @@ func RoundTripper(opts ...ProxyOption) http.RoundTripper {
 		resolver:     resolve.ResolverFunc(resolve.DNSSRV),
 		poolReporter: nil,
 		poolFactory:  pool.RoundRobin,
-		poolSuccess:  pool.SimpleSuccess,
 		registry:     nil,
 	}
 	t.setOptions(opts...)
@@ -30,7 +29,6 @@ type transport struct {
 	resolver     resolve.Resolver
 	poolReporter io.Writer
 	poolFactory  pool.Factory
-	poolSuccess  pool.SuccessFunc
 	registry     *registry
 }
 
@@ -50,9 +48,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	newreq := (*req)
 	newreq.URL = &newurl
 
-	resp, err := t.next.RoundTrip(&newreq)
-	pool.Put(host, t.poolSuccess(resp, err))
-	return resp, err
+	return t.next.RoundTrip(&newreq)
 }
 
 // ProxyOption sets a specific option for the RoundTripper. This is the
@@ -83,14 +79,6 @@ func PoolReporter(w io.Writer) ProxyOption {
 // provided, the RoundRobin pool is used.
 func PoolFactory(f pool.Factory) ProxyOption {
 	return func(t *transport) { t.poolFactory = f }
-}
-
-// PoolSuccess sets the function that determines if a HTTP response against a
-// specific host in a pool should be considered successful. That result may
-// optionally be used by the pool to influence how it yields hosts in the
-// future. If PoolSuccess isn't provided, pool.SimpleSuccess is used.
-func PoolSuccess(f pool.SuccessFunc) ProxyOption {
-	return func(t *transport) { t.poolSuccess = f }
 }
 
 func (t *transport) setOptions(opts ...ProxyOption) {

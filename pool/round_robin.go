@@ -2,7 +2,7 @@ package pool
 
 import "sync"
 
-// RoundRobin returns a plain round-robining Pool. Put and Close are no-ops.
+// RoundRobin returns a plain round-robining Pool. Close is a no-op.
 func RoundRobin(hosts []string) Pool {
 	return &roundRobin{
 		hosts: hosts,
@@ -26,7 +26,5 @@ func (rr *roundRobin) Get() (string, error) {
 	rr.hosts = append(rr.hosts[1:], rr.hosts[0])
 	return host, nil
 }
-
-func (rr *roundRobin) Put(string, bool) {}
 
 func (rr *roundRobin) Close() {}

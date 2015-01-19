@@ -29,11 +29,6 @@ func (r *report) Get() (string, error) {
 	return host, err
 }
 
-func (r *report) Put(host string, success bool) {
-	r.next.Put(host, success)
-	r.enc.Encode(poolPut{host, success})
-}
-
 func (r *report) Close() {
 	r.next.Close()
 }
@@ -49,9 +44,4 @@ func (e nopEncoder) Encode(interface{}) error { return nil }
 type poolGet struct {
 	Host string `json:"host"`
 	Err  error  `json:"error,omitempty"`
-}
-
-type poolPut struct {
-	Host    string `json:"host"`
-	Success bool   `json:"success"`
 }

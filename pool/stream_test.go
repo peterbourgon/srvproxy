@@ -56,12 +56,10 @@ func waitGet(p pool.Pool, max time.Duration) error {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timeout")
 		}
-		host, err := p.Get()
-		if err != nil {
+		if _, err := p.Get(); err != nil {
 			time.Sleep(max / 10)
 			continue
 		}
-		p.Put(host, true)
 		return nil
 	}
 }

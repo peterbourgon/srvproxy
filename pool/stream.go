@@ -12,8 +12,7 @@ import (
 func Stream(r resolve.Resolver, name string, f Factory) Pool {
 	s := &stream{
 		getc:   make(chan getRequest),
-		putc:   make(chan putRequest),
-		closec: make(chan struct{}),
+		closec: make(chan chan struct{}),
 	}
 
 	hosts, ttl := mustResolve(r, name)
@@ -24,8 +23,7 @@ func Stream(r resolve.Resolver, name string, f Factory) Pool {
 
 type stream struct {
 	getc   chan getRequest
-	putc   chan putRequest
-	closec chan struct{}
+	closec chan chan struct{}
 }
 
 func (s *stream) Get() (string, error) {
@@ -40,12 +38,10 @@ func (s *stream) Get() (string, error) {
 	}
 }
 
-func (s *stream) Put(host string, success bool) {
-	s.putc <- putRequest{host, success}
-}
-
 func (s *stream) Close() {
-	s.closec <- struct{}{}
+	q := make(chan struct{})
+	s.closec <- q
+	<-q
 }
 
 func (s *stream) loop(r resolve.Resolver, name string, hosts []string, refreshc <-chan time.Time, f Factory) {
@@ -74,11 +70,8 @@ func (s *stream) loop(r resolve.Resolver, name string, hosts []string, refreshc 
 
 			req.hostc <- host
 
-		case req := <-s.putc:
-			pool.Put(req.host, req.success)
-
-		case <-s.closec:
-			pool.Close()
+		case q := <-s.closec:
+			close(q)
 			return
 		}
 	}
@@ -96,9 +89,4 @@ func mustResolve(r resolve.Resolver, name string) ([]string, time.Duration) {
 type getRequest struct {
 	hostc chan string
 	errc  chan error
-}
-
-type putRequest struct {
-	host    string
-	success bool
 }
