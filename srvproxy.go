@@ -10,7 +10,7 @@ import (
 
 // RoundTripper yields a proxying RoundTripper.
 // Pass it to http.Transport.RegisterProtocol.
-func RoundTripper(opts ...OptionFunc) http.RoundTripper {
+func RoundTripper(opts ...ProxyOption) http.RoundTripper {
 	t := &transport{
 		next:        http.DefaultTransport,
 		resolver:    resolve.ResolverFunc(resolve.DNSSRV),
@@ -52,26 +52,26 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// OptionFunc sets a specific option for the transport. This is the functional
-// options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ for more
-// information.
-type OptionFunc func(*transport)
+// ProxyOption sets a specific option for the RoundTripper. This is the
+// functional options idiom. See https://www.youtube.com/watch?v=24lFtGHWxAQ
+// for more information.
+type ProxyOption func(*transport)
 
-// Next sets the http.RoundTripper that's used to transport reconstructed HTTP
-// requests. If Next isn't provided, http.DefaultTransport is used.
-func Next(rt http.RoundTripper) OptionFunc {
+// ProxyNext sets the http.RoundTripper that's used to transport reconstructed
+// HTTP requests. If Next isn't provided, http.DefaultTransport is used.
+func ProxyNext(rt http.RoundTripper) ProxyOption {
 	return func(t *transport) { t.next = rt }
 }
 
 // Resolver sets which name resolver will be used. If Resolver isn't provided,
 // a DNS SRV resolver is used.
-func Resolver(r resolve.Resolver) OptionFunc {
+func Resolver(r resolve.Resolver) ProxyOption {
 	return func(t *transport) { t.resolver = r }
 }
 
 // PoolFactory sets which type of pool will be used. If PoolFactory isn't
 // provided, the RoundRobin pool is used.
-func PoolFactory(f pool.Factory) OptionFunc {
+func PoolFactory(f pool.Factory) ProxyOption {
 	return func(t *transport) { t.poolFactory = f }
 }
 
@@ -79,11 +79,11 @@ func PoolFactory(f pool.Factory) OptionFunc {
 // specific host in a pool should be considered successful. That result may
 // optionally be used by the pool to influence how it yields hosts in the
 // future. If PoolSuccess isn't provided, pool.SimpleSuccess is used.
-func PoolSuccess(f pool.SuccessFunc) OptionFunc {
+func PoolSuccess(f pool.SuccessFunc) ProxyOption {
 	return func(t *transport) { t.poolSuccess = f }
 }
 
-func (t *transport) setOptions(opts ...OptionFunc) {
+func (t *transport) setOptions(opts ...ProxyOption) {
 	for _, f := range opts {
 		f(t)
 	}
