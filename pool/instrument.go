@@ -1,24 +1,15 @@
 package pool
 
-import (
-	"expvar"
+import "expvar"
 
-	"github.com/prometheus/client_golang/prometheus"
+const (
+	// ExpvarKeyGets is the key name for the expvar that captures pool
+	// get requests. Pass it to expvar.Get to inspect current statistics.
+	ExpvarKeyGets = "srvproxy_pool_gets"
 )
 
 var (
-	getCount = expvar.NewInt("srvproxy_pool_get_count")
-)
-
-var (
-	promGetCount = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Namespace: "srvproxy",
-			Subsystem: "pool",
-			Name:      "get_count",
-			Help:      "Number of get requests.",
-		},
-	)
+	gets = expvar.NewInt(ExpvarKeyGets)
 )
 
 // Instrument records metrics for operations against the wrapped Pool.
@@ -26,10 +17,15 @@ func Instrument(next Pool) Pool {
 	return instrument{next}
 }
 
-type instrument struct{ Pool }
+type instrument struct {
+	next Pool
+}
 
 func (i instrument) Get() (string, error) {
-	getCount.Add(1)
-	promGetCount.Add(1)
-	return i.Pool.Get()
+	gets.Add(1)
+	return i.next.Get()
+}
+
+func (i instrument) Close() {
+	i.next.Close()
 }
