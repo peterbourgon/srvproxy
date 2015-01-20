@@ -15,7 +15,7 @@ func Stream(r resolve.Resolver, name string, f Factory) Pool {
 		closec: make(chan chan struct{}),
 	}
 
-	hosts, ttl := mustResolve(r, name)
+	hosts, ttl := mustResolve(r, name, []string{})
 	go s.loop(r, name, hosts, time.After(ttl), f)
 
 	return s
@@ -49,7 +49,7 @@ func (s *stream) loop(r resolve.Resolver, name string, hosts []string, refreshc 
 	for {
 		select {
 		case <-refreshc:
-			newHosts, ttl := mustResolve(r, name)
+			newHosts, ttl := mustResolve(r, name, hosts)
 			refreshc = time.After(ttl)
 
 			// Only re-build the Pool if the hosts have changed.
@@ -77,10 +77,10 @@ func (s *stream) loop(r resolve.Resolver, name string, hosts []string, refreshc 
 	}
 }
 
-func mustResolve(r resolve.Resolver, name string) ([]string, time.Duration) {
+func mustResolve(r resolve.Resolver, name string, currentHosts []string) ([]string, time.Duration) {
 	hosts, ttl, err := r.Resolve(name)
 	if err != nil {
-		hosts = []string{}
+		hosts = currentHosts
 		ttl = time.Second
 	}
 	return hosts, ttl
